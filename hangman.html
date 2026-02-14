@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Grateful Dead Hangman</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Georgia', serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  h1 {
+    font-size: 1.4rem;
+    color: #e74c3c;
+    margin-bottom: 2px;
+    text-align: center;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .subtitle {
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 10px;
+    font-style: italic;
+  }
+
+  .stats {
+    font-size: 0.85rem;
+    color: #aaa;
+    margin-bottom: 8px;
+  }
+
+  .hangman-canvas {
+    width: 160px;
+    height: 160px;
+    margin: 0 auto 8px;
+  }
+
+  .word-display {
+    font-size: 1.5rem;
+    letter-spacing: 4px;
+    text-align: center;
+    margin: 8px 0;
+    min-height: 2.5rem;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    color: #f0f0f0;
+    word-break: break-word;
+    max-width: 100%;
+    padding: 0 8px;
+    line-height: 2;
+  }
+
+  .word-display .space {
+    display: inline-block;
+    width: 14px;
+  }
+
+  .guesses-left {
+    font-size: 0.85rem;
+    color: #e74c3c;
+    margin-bottom: 8px;
+  }
+
+  .wrong-letters {
+    font-size: 0.8rem;
+    color: #888;
+    margin-bottom: 10px;
+    min-height: 1.2rem;
+  }
+
+  .keyboard {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 5px;
+    max-width: 350px;
+    width: 100%;
+    margin: 0 auto;
+  }
+
+  .key {
+    background: #2d2d44;
+    border: 1px solid #444;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 1.1rem;
+    font-weight: bold;
+    padding: 10px 0;
+    text-align: center;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .key:active {
+    transform: scale(0.92);
+  }
+
+  .key.correct {
+    background: #27ae60;
+    border-color: #2ecc71;
+    color: #fff;
+  }
+
+  .key.wrong {
+    background: #5a2d2d;
+    border-color: #e74c3c;
+    color: #999;
+  }
+
+  .key.disabled {
+    pointer-events: none;
+    opacity: 0.4;
+  }
+
+  .message {
+    font-size: 1.1rem;
+    text-align: center;
+    margin: 12px 0;
+    min-height: 1.5rem;
+    font-weight: bold;
+  }
+
+  .message.win { color: #2ecc71; }
+  .message.lose { color: #e74c3c; }
+
+  .btn {
+    background: #e74c3c;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 32px;
+    font-size: 1rem;
+    font-family: 'Georgia', serif;
+    cursor: pointer;
+    margin-top: 8px;
+    transition: background 0.2s;
+  }
+
+  .btn:hover { background: #c0392b; }
+  .btn:active { transform: scale(0.96); }
+
+  #start-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 70vh;
+    text-align: center;
+  }
+
+  #start-screen p {
+    color: #aaa;
+    margin: 6px 0;
+    font-size: 0.95rem;
+  }
+
+  #game-screen { display: none; width: 100%; max-width: 400px; }
+
+  .skull { font-size: 3rem; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<div id="start-screen">
+  <div class="skull">&#9760;</div>
+  <h1>Grateful Dead<br>Hangman</h1>
+  <br>
+  <p>Guess the Grateful Dead song title,<br>one letter at a time.</p>
+  <p>You get 6 wrong guesses.</p>
+  <br>
+  <button class="btn" onclick="startGame()">Start Game</button>
+</div>
+
+<div id="game-screen">
+  <h1>Grateful Dead Hangman</h1>
+  <div class="subtitle">guess the song</div>
+  <div class="stats" id="stats"></div>
+
+  <canvas class="hangman-canvas" id="canvas" width="160" height="160"></canvas>
+
+  <div class="word-display" id="word-display"></div>
+  <div class="guesses-left" id="guesses-left"></div>
+  <div class="wrong-letters" id="wrong-letters"></div>
+
+  <div class="message" id="message"></div>
+
+  <div class="keyboard" id="keyboard"></div>
+
+  <div style="text-align:center; margin-top: 12px;">
+    <button class="btn" id="next-btn" style="display:none;" onclick="nextRound()">Next Song</button>
+  </div>
+</div>
+
+<script>
+const SONGS = [
+  "Truckin","Ripple","Casey Jones","Friend of the Devil","Sugar Magnolia",
+  "Scarlet Begonias","Touch of Grey","Uncle Johns Band","Fire on the Mountain",
+  "Eyes of the World","Terrapin Station","Dark Star","China Cat Sunflower",
+  "Box of Rain","Brokedown Palace","Althea","Bertha","Estimated Prophet",
+  "St Stephen","Shakedown Street","Tennessee Jed","Morning Dew",
+  "Playing in the Band","The Other One","Wharf Rat","Not Fade Away",
+  "Jack Straw","Deal","Sugaree","Brown Eyed Women","Ramble on Rose",
+  "Hes Gone","Stella Blue","Mississippi Half Step","New Speedway Boogie",
+  "Cumberland Blues","Dire Wolf","High Time","Operator","Candyman","Loser",
+  "Bird Song","Greatest Story Ever Told","Mexicali Blues","They Love Each Other",
+  "Ship of Fools","Franklins Tower","Help on the Way","Slipknot",
+  "The Music Never Stopped","Crazy Fingers","Blues for Allah",
+  "Samson and Delilah","Sunrise","Passenger","Lazy Lightning","Supplication",
+  "Peggy O","Cold Rain and Snow","Alabama Getaway","Feel Like a Stranger",
+  "Lost Sailor","Saint of Circumstance","Far From Me","Throwing Stones",
+  "Hell in a Bucket","West LA Fadeaway","Black Muddy River",
+  "Standing on the Moon","Foolish Heart","Built to Last","Picasso Moon",
+  "Liberty","So Many Roads","Days Between","Cosmic Charlie",
+  "Cryptical Envelopment","Rosemary","Mountains of the Moon",
+  "Duprees Diamond Blues","Cream Puff War","Golden Road",
+  "Here Comes Sunshine","Row Jimmy","Loose Lucy","Unbroken Chain",
+  "Scarlet Fire","Comes a Time","Might as Well","Mission in the Rain",
+  "Weather Report Suite","Let it Grow","Wave to the Wind",
+  "Pride of Cucamonga","Money Money","Born Cross Eyed","Black Peter",
+  "Easy Wind","Attics of My Life","Til the Morning Comes","To Lay Me Down"
+];
+
+const MAX_WRONG = 6;
+let currentSong = "";
+let correctGuesses = new Set();
+let wrongGuesses = new Set();
+let wrongCount = 0;
+let wins = 0;
+let games = 0;
+let gameOver = false;
+
+function startGame() {
+  document.getElementById("start-screen").style.display = "none";
+  document.getElementById("game-screen").style.display = "block";
+  nextRound();
+}
+
+function nextRound() {
+  currentSong = SONGS[Math.floor(Math.random() * SONGS.length)];
+  correctGuesses = new Set();
+  wrongGuesses = new Set();
+  wrongCount = 0;
+  gameOver = false;
+
+  document.getElementById("message").textContent = "";
+  document.getElementById("message").className = "message";
+  document.getElementById("next-btn").style.display = "none";
+  document.getElementById("stats").textContent = games > 0
+    ? `Score: ${wins} / ${games}`
+    : "";
+
+  buildKeyboard();
+  updateDisplay();
+  drawHangman();
+}
+
+function buildKeyboard() {
+  const kb = document.getElementById("keyboard");
+  kb.innerHTML = "";
+  for (let i = 65; i <= 90; i++) {
+    const letter = String.fromCharCode(i);
+    const btn = document.createElement("div");
+    btn.className = "key";
+    btn.textContent = letter;
+    btn.dataset.letter = letter;
+    btn.addEventListener("click", () => guessLetter(letter));
+    kb.appendChild(btn);
+  }
+}
+
+function guessLetter(letter) {
+  if (gameOver) return;
+  if (correctGuesses.has(letter) || wrongGuesses.has(letter)) return;
+
+  const keyEl = document.querySelector(`.key[data-letter="${letter}"]`);
+
+  if (currentSong.toUpperCase().includes(letter)) {
+    correctGuesses.add(letter);
+    if (keyEl) keyEl.classList.add("correct");
+  } else {
+    wrongGuesses.add(letter);
+    wrongCount++;
+    if (keyEl) keyEl.classList.add("wrong");
+  }
+
+  updateDisplay();
+  drawHangman();
+  checkGameState();
+}
+
+function updateDisplay() {
+  // Word display
+  const wordEl = document.getElementById("word-display");
+  let html = "";
+  for (const ch of currentSong) {
+    if (ch === " ") {
+      html += '<span class="space"></span>';
+    } else if (!isAlpha(ch)) {
+      html += ch;
+    } else if (correctGuesses.has(ch.toUpperCase())) {
+      html += ch;
+    } else {
+      html += "_";
+    }
+  }
+  wordEl.innerHTML = html;
+
+  // Guesses left
+  document.getElementById("guesses-left").textContent =
+    `Guesses left: ${MAX_WRONG - wrongCount}`;
+
+  // Wrong letters
+  const wrongArr = Array.from(wrongGuesses).sort();
+  document.getElementById("wrong-letters").textContent =
+    wrongArr.length > 0 ? `Misses: ${wrongArr.join(", ")}` : "";
+}
+
+function checkGameState() {
+  if (isSolved()) {
+    gameOver = true;
+    games++;
+    wins++;
+    const msg = document.getElementById("message");
+    msg.textContent = `"${currentSong}" — What a long, strange trip!`;
+    msg.className = "message win";
+    disableKeyboard();
+    document.getElementById("next-btn").style.display = "inline-block";
+    document.getElementById("stats").textContent = `Score: ${wins} / ${games}`;
+  } else if (wrongCount >= MAX_WRONG) {
+    gameOver = true;
+    games++;
+    const msg = document.getElementById("message");
+    msg.textContent = `It was "${currentSong}" — more time on the bus!`;
+    msg.className = "message lose";
+    disableKeyboard();
+    document.getElementById("next-btn").style.display = "inline-block";
+    document.getElementById("stats").textContent = `Score: ${wins} / ${games}`;
+  }
+}
+
+function isSolved() {
+  for (const ch of currentSong) {
+    if (isAlpha(ch) && !correctGuesses.has(ch.toUpperCase())) return false;
+  }
+  return true;
+}
+
+function isAlpha(ch) {
+  return /^[A-Za-z]$/.test(ch);
+}
+
+function disableKeyboard() {
+  document.querySelectorAll(".key").forEach(k => k.classList.add("disabled"));
+}
+
+// --- Canvas drawing ---
+
+function drawHangman() {
+  const canvas = document.getElementById("canvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, 160, 160);
+  ctx.strokeStyle = "#e0e0e0";
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+
+  // Base
+  ctx.beginPath(); ctx.moveTo(10, 150); ctx.lineTo(60, 150); ctx.stroke();
+  // Pole
+  ctx.beginPath(); ctx.moveTo(35, 150); ctx.lineTo(35, 20); ctx.stroke();
+  // Top beam
+  ctx.beginPath(); ctx.moveTo(35, 20); ctx.lineTo(110, 20); ctx.stroke();
+  // Rope
+  ctx.beginPath(); ctx.moveTo(110, 20); ctx.lineTo(110, 40); ctx.stroke();
+
+  if (wrongCount >= 1) {
+    // Head
+    ctx.beginPath(); ctx.arc(110, 52, 12, 0, Math.PI * 2); ctx.stroke();
+  }
+  if (wrongCount >= 2) {
+    // Body
+    ctx.beginPath(); ctx.moveTo(110, 64); ctx.lineTo(110, 105); ctx.stroke();
+  }
+  if (wrongCount >= 3) {
+    // Left arm
+    ctx.beginPath(); ctx.moveTo(110, 75); ctx.lineTo(88, 92); ctx.stroke();
+  }
+  if (wrongCount >= 4) {
+    // Right arm
+    ctx.beginPath(); ctx.moveTo(110, 75); ctx.lineTo(132, 92); ctx.stroke();
+  }
+  if (wrongCount >= 5) {
+    // Left leg
+    ctx.beginPath(); ctx.moveTo(110, 105); ctx.lineTo(88, 130); ctx.stroke();
+  }
+  if (wrongCount >= 6) {
+    // Right leg
+    ctx.beginPath(); ctx.moveTo(110, 105); ctx.lineTo(132, 130); ctx.stroke();
+  }
+}
+
+// Physical keyboard support
+document.addEventListener("keydown", (e) => {
+  const key = e.key.toUpperCase();
+  if (/^[A-Z]$/.test(key)) {
+    guessLetter(key);
+  }
+});
+</script>
+</body>
+</html>
