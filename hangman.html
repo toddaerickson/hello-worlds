@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Grateful Dead Hangman</title>
+<title>Hangman</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -156,9 +156,9 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    min-height: 70vh;
     text-align: center;
+    padding: 20px 0;
+    width: 100%;
   }
 
   #start-screen p {
@@ -166,6 +166,35 @@
     margin: 6px 0;
     font-size: 0.95rem;
   }
+
+  .category-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 16px 0;
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .category-btn {
+    background: #2d2d44;
+    border: 2px solid #444;
+    border-radius: 10px;
+    color: #e0e0e0;
+    font-family: 'Georgia', serif;
+    font-size: 1rem;
+    padding: 14px 16px;
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+    text-align: center;
+  }
+
+  .category-btn:hover { background: #3d3d54; border-color: #888; }
+  .category-btn:active { transform: scale(0.96); }
+
+  .category-btn .cat-icon { font-size: 1.5rem; display: block; margin-bottom: 4px; }
+  .category-btn .cat-name { font-weight: bold; }
+  .category-btn .cat-desc { font-size: 0.75rem; color: #999; margin-top: 2px; }
 
   #game-screen { display: none; width: 100%; max-width: 400px; position: relative; }
 
@@ -193,19 +222,48 @@
 <body>
 
 <div id="start-screen">
-  <div class="skull">&#9760;</div>
-  <h1>Grateful Dead<br>Hangman</h1>
+  <div class="skull">&#127925;</div>
+  <h1>Music &amp; Culture<br>Hangman</h1>
   <br>
-  <p>Guess the Grateful Dead song title,<br>one letter at a time.</p>
-  <p>You get 6 wrong guesses.</p>
-  <br>
-  <button class="btn" onclick="startGame()">Start Game</button>
+  <p>Pick a category, guess one letter at a time.<br>You get 6 wrong guesses.</p>
+  <div class="category-grid">
+    <button class="category-btn" onclick="startGame('dead')">
+      <span class="cat-icon">&#9760;</span>
+      <span class="cat-name">Grateful Dead</span>
+      <span class="cat-desc">Classic song titles</span>
+    </button>
+    <button class="category-btn" onclick="startGame('college')">
+      <span class="cat-icon">&#127911;</span>
+      <span class="cat-name">College Trending</span>
+      <span class="cat-desc">Modern hits &amp; viral tracks</span>
+    </button>
+    <button class="category-btn" onclick="startGame('fashion')">
+      <span class="cat-icon">&#128132;</span>
+      <span class="cat-name">Trendy Brands</span>
+      <span class="cat-desc">Fashion &amp; beauty from Sephora &amp; beyond</span>
+    </button>
+    <button class="category-btn" onclick="startGame('knitting')">
+      <span class="cat-icon">&#129526;</span>
+      <span class="cat-name">Knitting</span>
+      <span class="cat-desc">Stitches, tools &amp; yarn vocabulary</span>
+    </button>
+    <button class="category-btn" onclick="startGame('biology')">
+      <span class="cat-icon">&#128300;</span>
+      <span class="cat-name">9th Grade Biology</span>
+      <span class="cat-desc">Cells, genetics &amp; ecosystems</span>
+    </button>
+    <button class="category-btn" onclick="startGame('colors')">
+      <span class="cat-icon">&#127912;</span>
+      <span class="cat-name">Rare Colors</span>
+      <span class="cat-desc">Obscure &amp; beautiful color names</span>
+    </button>
+  </div>
 </div>
 
 <div id="game-screen">
   <button class="home-btn" onclick="goHome()">&#8592; Home</button>
-  <h1>Grateful Dead Hangman</h1>
-  <div class="subtitle">guess the song</div>
+  <h1 id="game-title">Hangman</h1>
+  <div class="subtitle" id="game-subtitle">guess the word</div>
   <div class="stats" id="stats"></div>
 
   <canvas class="hangman-canvas" id="canvas" width="160" height="160"></canvas>
@@ -219,41 +277,192 @@
   <div class="keyboard" id="keyboard"></div>
 
   <div style="text-align:center; margin-top: 12px;">
-    <button class="btn" id="next-btn" style="display:none;" onclick="nextRound()">Next Song</button>
+    <button class="btn" id="next-btn" style="display:none;" onclick="nextRound()">Next Word</button>
   </div>
 </div>
 
 <script>
-const SONGS = [
-  "Truckin","Ripple","Casey Jones","Friend of the Devil","Sugar Magnolia",
-  "Scarlet Begonias","Touch of Grey","Uncle Johns Band","Fire on the Mountain",
-  "Eyes of the World","Terrapin Station","Dark Star","China Cat Sunflower",
-  "Box of Rain","Brokedown Palace","Althea","Bertha","Estimated Prophet",
-  "St Stephen","Shakedown Street","Tennessee Jed","Morning Dew",
-  "Playing in the Band","The Other One","Wharf Rat","Not Fade Away",
-  "Jack Straw","Deal","Sugaree","Brown Eyed Women","Ramble on Rose",
-  "Hes Gone","Stella Blue","Mississippi Half Step","New Speedway Boogie",
-  "Cumberland Blues","Dire Wolf","High Time","Operator","Candyman","Loser",
-  "Bird Song","Greatest Story Ever Told","Mexicali Blues","They Love Each Other",
-  "Ship of Fools","Franklins Tower","Help on the Way","Slipknot",
-  "The Music Never Stopped","Crazy Fingers","Blues for Allah",
-  "Samson and Delilah","Sunrise","Passenger","Lazy Lightning","Supplication",
-  "Peggy O","Cold Rain and Snow","Alabama Getaway","Feel Like a Stranger",
-  "Lost Sailor","Saint of Circumstance","Far From Me","Throwing Stones",
-  "Hell in a Bucket","West LA Fadeaway","Black Muddy River",
-  "Standing on the Moon","Foolish Heart","Built to Last","Picasso Moon",
-  "Liberty","So Many Roads","Days Between","Cosmic Charlie",
-  "Cryptical Envelopment","Rosemary","Mountains of the Moon",
-  "Duprees Diamond Blues","Cream Puff War","Golden Road",
-  "Here Comes Sunshine","Row Jimmy","Loose Lucy","Unbroken Chain",
-  "Scarlet Fire","Comes a Time","Might as Well","Mission in the Rain",
-  "Weather Report Suite","Let it Grow","Wave to the Wind",
-  "Pride of Cucamonga","Money Money","Born Cross Eyed","Black Peter",
-  "Easy Wind","Attics of My Life","Til the Morning Comes","To Lay Me Down"
-];
+const CATEGORIES = {
+  dead: {
+    title: "Grateful Dead Hangman",
+    subtitle: "guess the song",
+    words: [
+      "Truckin","Ripple","Casey Jones","Friend of the Devil","Sugar Magnolia",
+      "Scarlet Begonias","Touch of Grey","Uncle Johns Band","Fire on the Mountain",
+      "Eyes of the World","Terrapin Station","Dark Star","China Cat Sunflower",
+      "Box of Rain","Brokedown Palace","Althea","Bertha","Estimated Prophet",
+      "St Stephen","Shakedown Street","Tennessee Jed","Morning Dew",
+      "Playing in the Band","The Other One","Wharf Rat","Not Fade Away",
+      "Jack Straw","Deal","Sugaree","Brown Eyed Women","Ramble on Rose",
+      "Hes Gone","Stella Blue","Mississippi Half Step","New Speedway Boogie",
+      "Cumberland Blues","Dire Wolf","High Time","Operator","Candyman","Loser",
+      "Bird Song","Greatest Story Ever Told","Mexicali Blues","They Love Each Other",
+      "Ship of Fools","Franklins Tower","Help on the Way","Slipknot",
+      "The Music Never Stopped","Crazy Fingers","Blues for Allah",
+      "Samson and Delilah","Sunrise","Passenger","Lazy Lightning","Supplication",
+      "Peggy O","Cold Rain and Snow","Alabama Getaway","Feel Like a Stranger",
+      "Lost Sailor","Saint of Circumstance","Far From Me","Throwing Stones",
+      "Hell in a Bucket","West LA Fadeaway","Black Muddy River",
+      "Standing on the Moon","Foolish Heart","Built to Last","Picasso Moon",
+      "Liberty","So Many Roads","Days Between","Cosmic Charlie",
+      "Cryptical Envelopment","Rosemary","Mountains of the Moon",
+      "Duprees Diamond Blues","Cream Puff War","Golden Road",
+      "Here Comes Sunshine","Row Jimmy","Loose Lucy","Unbroken Chain",
+      "Scarlet Fire","Comes a Time","Might as Well","Mission in the Rain",
+      "Weather Report Suite","Let it Grow","Wave to the Wind",
+      "Pride of Cucamonga","Money Money","Born Cross Eyed","Black Peter",
+      "Easy Wind","Attics of My Life","Til the Morning Comes","To Lay Me Down"
+    ],
+    winMsg: (w) => `"${w}" — What a long, strange trip!`,
+    loseMsg: (w) => `It was "${w}" — more time on the bus!`
+  },
+  college: {
+    title: "College Trending Hangman",
+    subtitle: "guess the song",
+    words: [
+      "Espresso","Not Like Us","We Cant Be Friends","Lunch","Birds of a Feather",
+      "Good Luck Babe","Saturn","Greedy","Water","Paint the Town Red",
+      "Snooze","Cruel Summer","Vampire","Kill Bill","Flowers",
+      "Die With a Smile","APT","Taste","Beautiful Things","Too Sweet",
+      "Fortnight","Stick Season","I Had Some Help","Lose Control",
+      "Starving","Pink Pony Club","Hot to Go","Good Graces","Red Wine Supernova",
+      "Femininomenon","Obsessed","Please Please Please","Juno",
+      "Training Season","Guess","The Door","So High School",
+      "I Can Do It With a Broken Heart","Daylight","Lovin on Me",
+      "Houdini","Agora Hills","Snooze","Fukumean","Last Night",
+      "Fast Car","Anti Hero","Lavender Haze","Karma","Midnight Rain",
+      "Style","Nonsense","Thinkin Bout Me","Man in Finance","Nasty",
+      "Million Dollar Baby","Abracadabra","One of Wun","Big Dawgs",
+      "Wildflower","Timeless","Austin","White Horse","Die Young",
+      "Jealous","Champagne Problems","All Too Well","Lover","Delicate",
+      "Blank Space","Shake It Off","Bad Blood","Cardigan","Willow",
+      "Levitating","Dont Start Now","Physical","Break My Heart",
+      "Blinding Lights","Save Your Tears","Starboy","Die for You",
+      "After Hours","Peaches","Ghost","Montero","Industry Baby",
+      "Good Days","Kiss Me More","Positions","Thank U Next",
+      "Watermelon Sugar","Adore You","Golden","Matilda","Late Night Talking",
+      "As It Was","Music for a Sushi Restaurant","Satellite","Daylight",
+      "Seven","Feather","Lacy","Coffee","Georgia","Motion Sickness"
+    ],
+    winMsg: (w) => `"${w}" — you ate that up! 🔥`,
+    loseMsg: (w) => `It was "${w}" — back to the playlist!`
+  },
+  fashion: {
+    title: "Trendy Brands Hangman",
+    subtitle: "guess the brand",
+    words: [
+      "Glossier","Rare Beauty","Fenty Beauty","Charlotte Tilbury","Sol de Janeiro",
+      "Drunk Elephant","Summer Fridays","Tatcha","Supergoop","Laneige",
+      "Glow Recipe","Tower 28","Kosas","Ilia","Merit",
+      "Saie","Rhode","Dior Beauty","Tom Ford","Nars",
+      "Patrick Ta","Milk Makeup","Olaplex","Dyson","Amika",
+      "Dae Hair","Ouai","Living Proof","Moroccanoil","Bumble and Bumble",
+      "Good Molecules","The Ordinary","Paula's Choice","CeraVe","La Roche Posay",
+      "Skinceuticals","Farmacy","Youth to the People","Herbivore","Osea",
+      "Kiehl's","Fresh","Clinique","Estee Lauder","Mac",
+      "Too Faced","Urban Decay","Benefit","Tarte","Hourglass",
+      "Laura Mercier","Bobbi Brown","Smashbox","Buxom","Makeup by Mario",
+      "Danessa Myricks","Anastasia Beverly Hills","Huda Beauty","Natasha Denona",
+      "Valentino","Chanel","Yves Saint Laurent","Givenchy","Prada",
+      "Versace","Gucci","Burberry","Armani","Balenciaga",
+      "Jacquemus","Loewe","Bottega Veneta","Celine","Miu Miu",
+      "Free People","Reformation","Aritzia","Zara","Skims",
+      "Alo Yoga","Lululemon","Nike","New Balance","Adidas",
+      "Salomon","On Running","Hoka","Birkenstock","Dr Martens",
+      "Ugg","Golden Goose","Veja","Converse","Samba",
+      "Stanley","Hydroflask","Beis","Calpak","Away"
+    ],
+    winMsg: (w) => `"${w}" — main character energy! ✨`,
+    loseMsg: (w) => `It was "${w}" — add it to the wishlist!`
+  },
+  knitting: {
+    title: "Knitting Hangman",
+    subtitle: "guess the term",
+    words: [
+      "Stockinette","Garter Stitch","Purl","Casting On","Binding Off",
+      "Yarn Over","Decrease","Increase","Frogging","Tinking",
+      "Blocking","Gauge Swatch","Double Pointed","Circular Needles","Cable",
+      "Bobble","Intarsia","Fair Isle","Stranded Colorwork","Mosaic",
+      "Brioche","Seed Stitch","Ribbing","Moss Stitch","Basketweave",
+      "Slip Stitch","Kitchener Stitch","Mattress Stitch","Duplicate Stitch",
+      "Short Rows","German Short Rows","Wrap and Turn","Provisional Cast On",
+      "Long Tail Cast On","Cable Cast On","Knitted Cast On","Picot Edge",
+      "Selvage","Skein","Hank","Ball Winder","Swift",
+      "Stitch Marker","Row Counter","Cable Needle","Tapestry Needle",
+      "Worsted Weight","Fingering Weight","Bulky","Lace Weight","DK Weight",
+      "Superwash Merino","Alpaca","Mohair","Cashmere","Bamboo",
+      "Acrylic","Cotton","Silk","Angora","Wool",
+      "Colorway","Variegated","Speckled","Gradient","Tonal",
+      "Raglan","Set in Sleeve","Top Down","Bottom Up","Seamless",
+      "Magic Loop","Two at a Time","Jogless Stripes","Afterthought Heel",
+      "Flap and Gusset","Toe Up","Cuff Down","Lifeline","Stitch Count",
+      "Gauge","Tension","Felting","Entrelac","Lace Knitting",
+      "Eyelet","Nupps","Picot Bind Off","Three Needle Bind Off",
+      "Applied I Cord","I Cord","Pompom","Tassel","Fringe",
+      "Buttonhole","Buttonband","Placket","Gusset","Steek"
+    ],
+    winMsg: (w) => `"${w}" — you didn't drop a stitch! 🧶`,
+    loseMsg: (w) => `It was "${w}" — time to frog and start over!`
+  },
+  biology: {
+    title: "9th Grade Bio Hangman",
+    subtitle: "guess the term",
+    words: [
+      "Mitosis","Meiosis","Chromosome","Ribosome","Cytoplasm",
+      "Nucleus","Cell Membrane","Mitochondria","Chloroplast","Photosynthesis",
+      "Cellular Respiration","Adenosine Triphosphate","Enzyme","Substrate","Catalyst",
+      "Protein","Amino Acid","Nucleotide","Deoxyribonucleic Acid","Ribonucleic Acid",
+      "Gene","Allele","Genotype","Phenotype","Dominant",
+      "Recessive","Heterozygous","Homozygous","Punnett Square","Heredity",
+      "Mutation","Natural Selection","Evolution","Adaptation","Speciation",
+      "Fossil Record","Homologous","Analogous","Vestigial","Biodiversity",
+      "Ecosystem","Biome","Population","Community","Habitat",
+      "Niche","Food Web","Trophic Level","Producer","Consumer",
+      "Decomposer","Autotroph","Heterotroph","Symbiosis","Mutualism",
+      "Parasitism","Commensalism","Predator","Prey","Homeostasis",
+      "Osmosis","Diffusion","Active Transport","Endocytosis","Exocytosis",
+      "Organelle","Vacuole","Golgi Apparatus","Endoplasmic Reticulum","Lysosome",
+      "Cell Wall","Prokaryote","Eukaryote","Binary Fission","Cytokinesis",
+      "Interphase","Prophase","Metaphase","Anaphase","Telophase",
+      "Diploid","Haploid","Gamete","Zygote","Fertilization",
+      "Taxonomy","Kingdom","Phylum","Genus","Species",
+      "Biotic","Abiotic","Carbon Cycle","Nitrogen Cycle","Carrying Capacity"
+    ],
+    winMsg: (w) => `"${w}" — you aced the lab! 🔬`,
+    loseMsg: (w) => `It was "${w}" — back to the textbook!`
+  },
+  colors: {
+    title: "Rare Colors Hangman",
+    subtitle: "guess the color",
+    words: [
+      "Cerulean","Vermillion","Chartreuse","Amaranth","Celadon",
+      "Puce","Gamboge","Smaragdine","Glaucous","Feldgrau",
+      "Zinnwaldite","Sarcoline","Coquelicot","Incarnadine","Fulvous",
+      "Xanadu","Eburnean","Gingerline","Labrador","Mikado",
+      "Nacarat","Watchet","Wenge","Zaffre","Sinoper",
+      "Aureolin","Bisque","Buff","Carnelian","Cinnabar",
+      "Damson","Ecru","Fallow","Heliotrope","Isabelline",
+      "Jasper","Kenyan Copper","Lapis Lazuli","Malachite","Nankeen",
+      "Oxblood","Periwinkle","Quercitron","Roan","Saffron",
+      "Taupe","Ultramarine","Viridian","Wisteria","Xanthic",
+      "Byzantium","Catawba","Cordovan","Alabaster","Obsidian",
+      "Phlox","Thistle","Amethyst","Marigold","Bittersweet",
+      "Verdigris","Titian","Sangria","Razzmatazz","Persimmon",
+      "Ochre","Mazarine","Livid","Icterine","Harlequin",
+      "Falu Red","Eigengrau","Drab","Cerise","Burgundy",
+      "Alizarin","Amaranthine","Aquamarine","Aureate","Beryl",
+      "Caput Mortuum","Cochineal","Cyan","Flax","Fuchsia",
+      "Goldenrod","Indigo","Jade","Magenta","Mauve",
+      "Onyx","Russet","Sepia","Teal","Umber"
+    ],
+    winMsg: (w) => `"${w}" — you have an eye for color! 🎨`,
+    loseMsg: (w) => `It was "${w}" — such a beautiful shade!`
+  }
+};
 
 const MAX_WRONG = 6;
-let currentSong = "";
+let currentCategory = "dead";
+let currentWord = "";
 let correctGuesses = new Set();
 let wrongGuesses = new Set();
 let wrongCount = 0;
@@ -261,9 +470,14 @@ let wins = 0;
 let games = 0;
 let gameOver = false;
 
-function startGame() {
+function startGame(category) {
+  currentCategory = category;
+  document.getElementById("game-title").textContent = CATEGORIES[category].title;
+  document.getElementById("game-subtitle").textContent = CATEGORIES[category].subtitle;
   document.getElementById("start-screen").style.display = "none";
   document.getElementById("game-screen").style.display = "block";
+  wins = 0;
+  games = 0;
   nextRound();
 }
 
@@ -275,7 +489,8 @@ function goHome() {
 }
 
 function nextRound() {
-  currentSong = SONGS[Math.floor(Math.random() * SONGS.length)];
+  const cat = CATEGORIES[currentCategory];
+  currentWord = cat.words[Math.floor(Math.random() * cat.words.length)];
   correctGuesses = new Set();
   wrongGuesses = new Set();
   wrongCount = 0;
@@ -313,7 +528,7 @@ function guessLetter(letter) {
 
   const keyEl = document.querySelector(`.key[data-letter="${letter}"]`);
 
-  if (currentSong.toUpperCase().includes(letter)) {
+  if (currentWord.toUpperCase().includes(letter)) {
     correctGuesses.add(letter);
     if (keyEl) keyEl.classList.add("correct");
   } else {
@@ -331,7 +546,7 @@ function updateDisplay() {
   // Word display
   const wordEl = document.getElementById("word-display");
   let html = "";
-  for (const ch of currentSong) {
+  for (const ch of currentWord) {
     if (ch === " ") {
       html += '<span class="space"></span>';
     } else if (!isAlpha(ch)) {
@@ -355,12 +570,13 @@ function updateDisplay() {
 }
 
 function checkGameState() {
+  const cat = CATEGORIES[currentCategory];
   if (isSolved()) {
     gameOver = true;
     games++;
     wins++;
     const msg = document.getElementById("message");
-    msg.textContent = `"${currentSong}" — What a long, strange trip!`;
+    msg.textContent = cat.winMsg(currentWord);
     msg.className = "message win";
     disableKeyboard();
     document.getElementById("next-btn").style.display = "inline-block";
@@ -369,7 +585,7 @@ function checkGameState() {
     gameOver = true;
     games++;
     const msg = document.getElementById("message");
-    msg.textContent = `It was "${currentSong}" — more time on the bus!`;
+    msg.textContent = cat.loseMsg(currentWord);
     msg.className = "message lose";
     disableKeyboard();
     document.getElementById("next-btn").style.display = "inline-block";
@@ -378,7 +594,7 @@ function checkGameState() {
 }
 
 function isSolved() {
-  for (const ch of currentSong) {
+  for (const ch of currentWord) {
     if (isAlpha(ch) && !correctGuesses.has(ch.toUpperCase())) return false;
   }
   return true;
