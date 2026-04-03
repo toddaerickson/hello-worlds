@@ -66,9 +66,37 @@ class TestBreadth:
             pct_above_200dma=75,
             advance_decline_line_trend="rising",
             new_highs_vs_new_lows=5.0,
+            top_10_concentration_pct=35,
         )
         assert result.score == 0
         assert result.level == "low"
+
+    def test_extreme_concentration_adds_to_score(self):
+        """Top-10 > 60% of returns fires the concentration sub-component."""
+        result = evaluate_breadth(top_10_concentration_pct=70)
+        assert result.score == 20
+        assert result.components["top_10_concentration_pct"] == 70
+
+    def test_dotcom_level_concentration(self):
+        """Top-10 > 75% = historically rare, maximum score."""
+        result = evaluate_breadth(top_10_concentration_pct=80)
+        assert result.score == 25
+
+    def test_concentration_plus_poor_breadth(self):
+        """Concentration + breadth deterioration together = stronger signal."""
+        result = evaluate_breadth(
+            pct_above_200dma=35,
+            advance_decline_line_trend="declining",
+            new_highs_vs_new_lows=0.8,
+            top_10_concentration_pct=70,
+        )
+        assert result.score == 100  # Capped at 100
+        assert result.level == "extreme"
+
+    def test_moderate_concentration_below_threshold(self):
+        """Top-10 at 45% (normal range) = no contribution."""
+        result = evaluate_breadth(top_10_concentration_pct=45)
+        assert result.score == 0
 
 
 # ---------------------------------------------------------------------------
@@ -360,6 +388,7 @@ class TestScoringEngine:
             pct_above_200dma=52,
             advance_decline_line_trend="flat",
             new_highs_vs_new_lows=1.5,
+            top_10_concentration_pct=68,
             pe_ratio=23,
             cape_ratio=33,
             ev_ebitda=15,

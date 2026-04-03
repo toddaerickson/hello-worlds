@@ -23,6 +23,7 @@ def main():
             pct_above_200dma=52,
             advance_decline_line_trend="flat",
             new_highs_vs_new_lows=1.5,
+            top_10_concentration_pct=68,
             pe_ratio=23, cape_ratio=33, ev_ebitda=15,
             hy_spread_bps=320, ig_spread_bps=90, hy_spread_percentile=15,
             aaii_bull_bear_spread=18, vix=14, put_call_ratio=0.82, fear_greed_index=68,
