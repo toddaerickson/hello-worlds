@@ -160,7 +160,7 @@ def generate_chart_html(output_path="regime_chart.html"):
 
 <div class="signal-charts">
   <div class="signal-chart-box">
-    <h3>Signal 1: Breadth Divergence</h3>
+    <h3>Signal 1: Breadth Divergence &amp; Concentration Risk</h3>
     <div class="signal-chart-inner"><canvas id="chart_s1"></canvas></div>
   </div>
   <div class="signal-chart-box">

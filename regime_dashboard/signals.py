@@ -37,13 +37,18 @@ def score_to_level(score):
 # ---------------------------------------------------------------------------
 
 def evaluate_breadth(pct_above_200dma=None, advance_decline_line_trend=None,
-                     new_highs_vs_new_lows=None):
+                     new_highs_vs_new_lows=None, top_10_concentration_pct=None):
     """Evaluate market breadth divergence.
 
     Args:
         pct_above_200dma: Percentage of S&P 500 stocks above 200-day MA
         advance_decline_line_trend: 'rising', 'flat', or 'declining'
         new_highs_vs_new_lows: Ratio of new 52-week highs to new lows
+        top_10_concentration_pct: Top-10 stock contribution to trailing 6-month
+            SPX return as a percentage (e.g. 65 means top-10 drove 65% of returns).
+            Measures cap-weighted vs equal-weighted divergence. Empirically supported
+            by Leuthold, NDR, and BofA research — extreme concentration preceded
+            the dot-com crash, GFC, 2016 correction, and 2022 bear market.
     """
     score = 0
     components = {}
@@ -51,25 +56,42 @@ def evaluate_breadth(pct_above_200dma=None, advance_decline_line_trend=None,
     if pct_above_200dma is not None:
         components["pct_above_200dma"] = pct_above_200dma
         if pct_above_200dma < 40:
-            score += 40
+            score += 30
         elif pct_above_200dma < 55:
-            score += 25
+            score += 20
         elif pct_above_200dma < 65:
-            score += 10
+            score += 8
 
     if advance_decline_line_trend is not None:
         components["ad_line_trend"] = advance_decline_line_trend
         if advance_decline_line_trend == "declining":
-            score += 30
+            score += 25
         elif advance_decline_line_trend == "flat":
-            score += 15
+            score += 12
 
     if new_highs_vs_new_lows is not None:
         components["highs_lows_ratio"] = new_highs_vs_new_lows
         if new_highs_vs_new_lows < 1.0:
-            score += 30
+            score += 25
         elif new_highs_vs_new_lows < 2.0:
-            score += 15
+            score += 12
+
+    if top_10_concentration_pct is not None:
+        components["top_10_concentration_pct"] = top_10_concentration_pct
+        # Threshold: top-10 contributing > 60% of trailing 6-month return
+        # fires the signal. Historical context:
+        #   ~35-45%: Normal broad-based market
+        #   ~50-60%: Elevated concentration (2017-2019 FANG era)
+        #   ~60-75%: Extreme (pre-2000 dot-com, 2021 Mag7, 2024-present)
+        #   >75%:    Historically rare, dot-com peak levels
+        if top_10_concentration_pct > 75:
+            score += 25  # Historically rare, dot-com-level concentration
+        elif top_10_concentration_pct > 60:
+            score += 20  # Extreme — signal fires at this threshold
+        elif top_10_concentration_pct > 50:
+            score += 10  # Elevated but not yet extreme
+        # Interaction effect: concentration + poor breadth together is
+        # a stronger signal than either alone (correlated but not identical)
 
     score = min(score, 100)
     return SignalReading(

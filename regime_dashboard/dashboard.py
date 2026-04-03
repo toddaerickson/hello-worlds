@@ -26,6 +26,7 @@ def run_dashboard_manual(
     pct_above_200dma=None,
     advance_decline_line_trend=None,
     new_highs_vs_new_lows=None,
+    top_10_concentration_pct=None,
     # Signal 2: Valuation
     pe_ratio=None,
     cape_ratio=None,
@@ -68,7 +69,7 @@ def run_dashboard_manual(
     dominance flag evaluated.
     """
     # Evaluate all 7 signals
-    s1 = evaluate_breadth(pct_above_200dma, advance_decline_line_trend, new_highs_vs_new_lows)
+    s1 = evaluate_breadth(pct_above_200dma, advance_decline_line_trend, new_highs_vs_new_lows, top_10_concentration_pct)
     s2 = evaluate_valuation(pe_ratio, cape_ratio, ev_ebitda)
     s3 = evaluate_credit(hy_spread_bps, ig_spread_bps, hy_spread_percentile)
     s4 = evaluate_sentiment(aaii_bull_bear_spread, vix, put_call_ratio, fear_greed_index)
