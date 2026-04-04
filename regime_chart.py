@@ -24,12 +24,18 @@ def generate_png(output_path="regime_chart.png"):
         ("s7_term_premium", "Term Premium / Fiscal Stress", "#06b6d4"),
     ]
 
+    spx_prices = [d["spx"] for d in data]
+
     events = [
+        ("1981-06", "Volcker\nPeak", "#e67e22"),
+        ("1987-10", "Black\nMonday", "#e74c3c"),
+        ("1990-07", "Gulf War\nRecession", "#e74c3c"),
+        ("1998-08", "LTCM\nCrisis", "#e67e22"),
+        ("2000-03", "Dot-com\nPeak", "#e74c3c"),
+        ("2001-09", "9/11", "#e74c3c"),
         ("2007-10", "GFC\nBegins", "#e74c3c"),
         ("2008-09", "Lehman", "#e74c3c"),
         ("2009-03", "Market\nBottom", "#27ae60"),
-        ("2011-08", "US\nDowngrade", "#e67e22"),
-        ("2016-02", "China/Oil\nScare", "#e67e22"),
         ("2018-12", "Fed\nPivot", "#e67e22"),
         ("2020-03", "COVID\nCrash", "#e74c3c"),
         ("2021-11", "Peak\nBubble", "#e74c3c"),
@@ -61,6 +67,18 @@ def generate_png(output_path="regime_chart.png"):
             ax_main.axvspan(fd_start, i, color="#7c3aed", alpha=0.12, zorder=1)
             fd_start = None
 
+    # S&P 500 overlay (secondary y-axis, log scale)
+    ax_spx = ax_main.twinx()
+    ax_spx.set_facecolor("none")
+    ax_spx.plot(x, spx_prices, color="#ffffff", linewidth=1.0, alpha=0.35,
+                label="S&P 500", zorder=2)
+    ax_spx.set_yscale("log")
+    ax_spx.set_ylim(100, 8000)
+    ax_spx.set_ylabel("S&P 500 (log scale)", fontsize=10, color="#6b7280")
+    ax_spx.tick_params(axis="y", colors="#4b5563", labelsize=8)
+    for spine in ax_spx.spines.values():
+        spine.set_color("#1f2937")
+
     # Plot lines
     ax_main.plot(x, raw_scores, color="#f59e0b", alpha=0.25, linewidth=1,
                  linestyle="--", label="Raw Score", zorder=3)
@@ -91,7 +109,7 @@ def generate_png(output_path="regime_chart.png"):
     tick_positions = []
     tick_labels = []
     for i, d in enumerate(dates):
-        if d.endswith("-01") and int(d[:4]) % 2 == 0:
+        if d.endswith("-01") and int(d[:4]) % 4 == 0:
             tick_positions.append(i)
             tick_labels.append(d[:4])
     ax_main.set_xticks(tick_positions)
@@ -104,6 +122,7 @@ def generate_png(output_path="regime_chart.png"):
     handles = [
         plt.Line2D([0], [0], color="#f59e0b", linewidth=2, label="Adjusted Score"),
         plt.Line2D([0], [0], color="#f59e0b", linewidth=1, linestyle="--", alpha=0.4, label="Raw Score"),
+        plt.Line2D([0], [0], color="#ffffff", linewidth=1, alpha=0.35, label="S&P 500 (log, right axis)"),
         mpatches.Patch(facecolor="#7c3aed", alpha=0.25, label="Fiscal Dominance Active"),
         mpatches.Patch(facecolor="#ef4444", alpha=0.15, label="Extreme Zone (80+)"),
         mpatches.Patch(facecolor="#fbbf24", alpha=0.1, label="High Zone (60-80)"),
@@ -112,7 +131,7 @@ def generate_png(output_path="regime_chart.png"):
                   facecolor="#111827", edgecolor="#1f2937", labelcolor="#9ca3af")
 
     ax_main.set_title("Market Topping Regime Score — 7-Signal Composite with Fiscal Dominance Modifier\n"
-                      "Monthly · Jan 2006 – Mar 2026",
+                      "Monthly · Jan 1980 – Mar 2026",
                       fontsize=14, color="#f9fafb", pad=15, fontweight="bold")
 
     # Spines

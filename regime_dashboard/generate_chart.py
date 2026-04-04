@@ -24,13 +24,19 @@ def generate_chart_html(output_path="regime_chart.html"):
         "Term Premium": [d["s7_term_premium"] for d in data],
     }
 
+    spx_prices = [d["spx"] for d in data]
+
     # Key market events for annotations
     events = [
+        {"date": "1981-06", "label": "Volcker Peak", "color": "#e67e22"},
+        {"date": "1987-10", "label": "Black Monday", "color": "#e74c3c"},
+        {"date": "1990-07", "label": "Gulf War Recession", "color": "#e74c3c"},
+        {"date": "1998-08", "label": "LTCM Crisis", "color": "#e67e22"},
+        {"date": "2000-03", "label": "Dot-com Peak", "color": "#e74c3c"},
+        {"date": "2001-09", "label": "9/11", "color": "#e74c3c"},
         {"date": "2007-10", "label": "GFC Begins", "color": "#e74c3c"},
         {"date": "2008-09", "label": "Lehman", "color": "#e74c3c"},
         {"date": "2009-03", "label": "Market Bottom", "color": "#27ae60"},
-        {"date": "2011-08", "label": "US Downgrade", "color": "#e67e22"},
-        {"date": "2015-08", "label": "China Deval", "color": "#e67e22"},
         {"date": "2018-12", "label": "Fed Pivot", "color": "#e67e22"},
         {"date": "2020-03", "label": "COVID Crash", "color": "#e74c3c"},
         {"date": "2021-11", "label": "Peak Bubble", "color": "#e74c3c"},
@@ -43,7 +49,7 @@ def generate_chart_html(output_path="regime_chart.html"):
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Market Topping Regime Score - 20 Year History</title>
+<title>Market Topping Regime Score - 1980 to 2026</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.1.0/dist/chartjs-plugin-annotation.min.js"></script>
 <style>
@@ -135,11 +141,12 @@ def generate_chart_html(output_path="regime_chart.html"):
 <body>
 
 <h1>Market Topping Regime Score</h1>
-<p class="subtitle">7-Signal Composite with Fiscal Dominance Modifier &middot; Monthly &middot; Jan 2006 &ndash; Mar 2026</p>
+<p class="subtitle">7-Signal Composite with Fiscal Dominance Modifier &middot; Monthly &middot; Jan 1980 &ndash; Mar 2026</p>
 
 <div class="legend-bar">
   <div class="legend-item"><div class="legend-swatch" style="background:#f59e0b"></div> Adjusted Score (with FD modifier)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:rgba(245,158,11,0.25);border:1px dashed #f59e0b"></div> Raw Score</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:rgba(255,255,255,0.35);border:1px solid rgba(255,255,255,0.5)"></div> S&amp;P 500 (log, right axis)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:rgba(168,85,247,0.15);border:1px solid #7c3aed"></div> Fiscal Dominance Active</div>
   <div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,0.12)"></div> Extreme Zone (80+)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:rgba(251,191,36,0.08)"></div> High Zone (60-80)</div>
@@ -200,6 +207,7 @@ const rawScores = {json.dumps(raw_scores)};
 const fdActive = {json.dumps(fd_active)};
 const signalData = {json.dumps(signal_data)};
 const fdConditions = {json.dumps([d["fd_conditions"] for d in data])};
+const spxPrices = {json.dumps(spx_prices)};
 
 const events = {json.dumps(events)};
 
@@ -289,6 +297,17 @@ new Chart(mainCtx, {{
         pointHoverRadius: 3,
         tension: 0.3,
       }},
+      {{
+        label: 'S&P 500',
+        data: spxPrices,
+        borderColor: 'rgba(255, 255, 255, 0.35)',
+        borderWidth: 1.2,
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 3,
+        tension: 0.3,
+        yAxisID: 'ySpx',
+      }},
     ]
   }},
   options: {{
@@ -311,12 +330,31 @@ new Chart(mainCtx, {{
       y: {{
         min: 0,
         max: 100,
+        position: 'left',
         ticks: {{
           stepSize: 10,
           color: '#6b7280',
           callback: v => v + '',
         }},
         grid: {{ color: 'rgba(75, 85, 99, 0.2)' }},
+      }},
+      ySpx: {{
+        type: 'logarithmic',
+        position: 'right',
+        min: 100,
+        max: 8000,
+        ticks: {{
+          color: '#4b5563',
+          font: {{ size: 10 }},
+          callback: v => [100, 200, 500, 1000, 2000, 5000].includes(v) ? v.toLocaleString() : '',
+        }},
+        grid: {{ display: false }},
+        title: {{
+          display: true,
+          text: 'S&P 500 (log)',
+          color: '#6b7280',
+          font: {{ size: 11 }},
+        }},
       }}
     }},
     plugins: {{

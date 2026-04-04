@@ -225,7 +225,7 @@ if data["fiscal_dominance_details"]:
 # Historical chart
 # ---------------------------------------------------------------------------
 st.markdown("---")
-st.subheader("20-Year Historical Regime Score")
+st.subheader("Historical Regime Score (1980–2026)")
 
 hist_data = compute_historical_scores()
 
