@@ -1,4 +1,9 @@
 # Regime Dashboard - Market Topping Framework
 # Core: no dependencies (uses stdlib urllib, json, dataclasses)
-# Optional: for chart generation
+
+# Chart generation (optional)
 matplotlib>=3.8.0
+
+# Streamlit frontend (optional)
+streamlit>=1.28.0
+pandas>=2.0.0
