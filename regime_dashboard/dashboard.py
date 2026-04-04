@@ -1,9 +1,11 @@
-"""Main dashboard entry point.
+"""Main dashboard entry point — orchestrates signal evaluation and scoring.
 
-Orchestrates data fetching, signal evaluation, and regime assessment.
-Can operate in two modes:
-1. Live mode: Fetches data from FRED API
-2. Manual mode: Accepts manually provided data points
+Two operating modes:
+  1. Manual mode — accepts explicitly provided data points (for scenario
+     analysis, historical backtesting, and the Streamlit frontend).
+  2. Live mode — fetches real-time data from the FRED API. Note: only a
+     subset of signals can be sourced from FRED; breadth, sentiment, and
+     margin debt require other data sources or manual input.
 """
 
 import json
@@ -65,23 +67,25 @@ def run_dashboard_manual(
 ) -> RegimeAssessment:
     """Run the full dashboard with manually provided data.
 
-    Returns a RegimeAssessment with all signals scored and the fiscal
-    dominance flag evaluated.
+    Any parameter left as None is simply not scored (scores 0 contribution).
+    Returns a RegimeAssessment with all 7 signals and the FD flag evaluated.
     """
-    # Evaluate all 7 signals
-    s1 = evaluate_breadth(pct_above_200dma, advance_decline_line_trend, new_highs_vs_new_lows, top_10_concentration_pct)
+    # --- Evaluate all 7 signals ---
+    s1 = evaluate_breadth(pct_above_200dma, advance_decline_line_trend,
+                          new_highs_vs_new_lows, top_10_concentration_pct)
     s2 = evaluate_valuation(pe_ratio, cape_ratio, ev_ebitda)
     s3 = evaluate_credit(hy_spread_bps, ig_spread_bps, hy_spread_percentile)
     s4 = evaluate_sentiment(aaii_bull_bear_spread, vix, put_call_ratio, fear_greed_index)
-    s5 = evaluate_macro(lei_yoy_change, lei_monthly_change, private_lei_yoy_change, ism_manufacturing)
+    s5 = evaluate_macro(lei_yoy_change, lei_monthly_change,
+                        private_lei_yoy_change, ism_manufacturing)
     s6 = evaluate_leverage(margin_debt_yoy_pct, margin_debt_to_gdp, margin_debt_percentile)
     s7 = evaluate_term_premium(
         spread_2s10s_bps, term_premium_10y, term_premium_5y_avg,
         deficit_pct_gdp, debt_service_pct_revenue, fed_cutting,
     )
 
-    # Evaluate fiscal dominance flag
-    # Use interest_pct_revenue if provided, fall back to debt_service_pct_revenue
+    # --- Evaluate fiscal dominance flag ---
+    # Use interest_pct_revenue if provided; fall back to debt_service_pct_revenue
     fd_interest = interest_pct_revenue if interest_pct_revenue is not None else debt_service_pct_revenue
     fd_fed_declining = fed_funds_rate_declining if fed_funds_rate_declining is not None else fed_cutting
 
@@ -95,37 +99,37 @@ def run_dashboard_manual(
         term_premium_rising=term_premium_rising,
     )
 
-    # Compute regime score
-    all_signals = [s1, s2, s3, s4, s5, s6, s7]
-    return compute_regime_score(all_signals, fd_flag)
+    # --- Compute composite regime score ---
+    return compute_regime_score([s1, s2, s3, s4, s5, s6, s7], fd_flag)
 
 
 def run_dashboard_live():
-    """Run the dashboard fetching live data from FRED.
+    """Run the dashboard fetching live data from the FRED API.
 
-    Requires FRED_API_KEY environment variable to be set.
-
-    Returns a RegimeAssessment. Note: Some signals (breadth, sentiment,
-    margin debt) require non-FRED data sources and will need manual input.
+    Requires the FRED_API_KEY environment variable to be set.
+    Only a subset of signals can be sourced from FRED (yield curve, PCE,
+    Fed Funds rate). Breadth, sentiment, and margin debt data require
+    non-FRED sources and will default to 0 when not provided.
     """
     from .fred_client import fetch_series, get_latest_value
 
-    # Fetch FRED data
-    t10y2y = get_latest_value("T10Y2Y")
-    dff_data = fetch_series("DFF", observation_start="2025-01-01")
-    pce_data = get_latest_value("PCEPILFE")
-    # Derive values
+    # Fetch available FRED series
+    t10y2y = get_latest_value("T10Y2Y")       # 2s10s spread (%)
+    dff_data = fetch_series("DFF", observation_start="2025-01-01")  # Fed Funds Rate
+    pce_data = get_latest_value("PCEPILFE")    # Core PCE YoY
+
+    # Derive input values
     spread_2s10s_bps = t10y2y["value"] * 100 if t10y2y else None
     core_pce = pce_data["value"] if pce_data else None
 
-    # Determine if Fed is cutting (compare current FFR to 6-month-ago FFR)
+    # Determine if Fed is cutting: compare latest FFR to start-of-year
     fed_cutting = None
     if len(dff_data) >= 2:
         recent_ffr = dff_data[-1]["value"]
         older_ffr = dff_data[0]["value"]
         fed_cutting = recent_ffr < older_ffr
 
-    # Run with available data (many signals will score 0 due to missing data)
+    # Run with available data (many signals will score 0)
     return run_dashboard_manual(
         spread_2s10s_bps=spread_2s10s_bps,
         core_pce_yoy=core_pce,
@@ -135,7 +139,7 @@ def run_dashboard_live():
 
 
 def print_dashboard(assessment: RegimeAssessment):
-    """Print a formatted dashboard to stdout."""
+    """Print a formatted dashboard summary to stdout."""
     data = assessment.to_dict()
 
     print("=" * 72)
@@ -155,7 +159,7 @@ def print_dashboard(assessment: RegimeAssessment):
         print()
     print()
 
-    # Fiscal dominance flag
+    # Fiscal dominance flag status
     if data["fiscal_dominance_active"]:
         print("  *** FISCAL DOMINANCE FLAG: ACTIVE ***")
         print(f"  Conditions met: {data['fiscal_dominance_conditions_met']}/4")
@@ -170,21 +174,16 @@ def print_dashboard(assessment: RegimeAssessment):
     if data["warnings"]:
         print()
 
-    # Individual signals
+    # Individual signal scores
     print("-" * 72)
     print(f"  {'Signal':<32} {'Score':>6} {'Level':<12}")
     print("-" * 72)
 
     for sig in data["signals"]:
-        name = sig["name"]
-        score = sig["score"]
-        level = sig["level"]
-        print(f"  {name:<32} {score:>6} {level:<12}")
+        print(f"  {sig['name']:<32} {sig['score']:>6} {sig['level']:<12}")
 
         if sig.get("fiscal_dominance_note"):
-            # Wrap long notes
-            note = sig["fiscal_dominance_note"]
-            print(f"    FD: {note}")
+            print(f"    FD: {sig['fiscal_dominance_note']}")
 
         if sig.get("components"):
             for k, v in sig["components"].items():
@@ -195,75 +194,5 @@ def print_dashboard(assessment: RegimeAssessment):
 
 
 def to_json(assessment: RegimeAssessment) -> str:
-    """Serialize assessment to JSON string."""
+    """Serialize assessment to a formatted JSON string."""
     return json.dumps(assessment.to_dict(), indent=2)
-
-
-# CLI entry point
-if __name__ == "__main__":
-    import argparse
-    import sys
-
-    parser = argparse.ArgumentParser(description="Regime Dashboard - Market Topping Framework")
-    parser.add_argument("--live", action="store_true", help="Fetch live data from FRED API")
-    parser.add_argument("--json", action="store_true", help="Output as JSON")
-    parser.add_argument("--example", action="store_true", help="Run with example April 2026 data")
-    args = parser.parse_args()
-
-    if args.example:
-        # Example: Approximate April 2026 conditions based on the analysis
-        assessment = run_dashboard_manual(
-            # Signal 1: Breadth - moderately concerning
-            pct_above_200dma=52,
-            advance_decline_line_trend="flat",
-            new_highs_vs_new_lows=1.5,
-            # Signal 2: Valuation - elevated
-            pe_ratio=23,
-            cape_ratio=33,
-            ev_ebitda=15,
-            # Signal 3: Credit - complacent
-            hy_spread_bps=320,
-            ig_spread_bps=90,
-            hy_spread_percentile=15,
-            # Signal 4: Sentiment - moderately bullish
-            aaii_bull_bear_spread=18,
-            vix=14,
-            put_call_ratio=0.82,
-            fear_greed_index=68,
-            # Signal 5: Macro - mixed (headline OK, private weak)
-            lei_yoy_change=-1.5,
-            lei_monthly_change=-0.3,
-            private_lei_yoy_change=-3.0,
-            ism_manufacturing=48.5,
-            # Signal 6: Leverage - elevated
-            margin_debt_yoy_pct=18,
-            margin_debt_to_gdp=2.8,
-            margin_debt_percentile=78,
-            # Signal 7: Term Premium / Fiscal Stress
-            spread_2s10s_bps=110,
-            term_premium_10y=0.85,
-            term_premium_5y_avg=0.20,
-            deficit_pct_gdp=6.5,
-            debt_service_pct_revenue=22,
-            fed_cutting=True,
-            # Fiscal Dominance Flag
-            in_recession=False,
-            interest_pct_revenue=22,
-            fed_funds_rate_declining=True,
-            core_pce_yoy=2.8,
-            term_premium_rising=True,
-        )
-    elif args.live:
-        try:
-            assessment = run_dashboard_live()
-        except EnvironmentError as e:
-            print(f"Error: {e}", file=sys.stderr)
-            sys.exit(1)
-    else:
-        # Run with no data (all signals score 0)
-        assessment = run_dashboard_manual()
-
-    if args.json:
-        print(to_json(assessment))
-    else:
-        print_dashboard(assessment)

@@ -34,17 +34,36 @@ from regime_dashboard.scoring_engine import compute_regime_score
 # ---------------------------------------------------------------------------
 
 def _build_monthly_data():
-    """Build monthly data points from documented economic conditions.
+    """Build 555 monthly data points (Jan 1980 – Mar 2026) from documented
+    economic conditions using keyframe interpolation.
 
-    Returns list of (date_str, indicator_dict) tuples.
+    Strategy: rather than listing every single month, we define ~80 keyframes
+    at significant economic turning points (recessions, crises, bubble peaks)
+    with documented indicator values. Between keyframes, values are linearly
+    interpolated to produce smooth monthly estimates.
+
+    Each keyframe contains:
+      cape       — Shiller CAPE ratio (cyclically-adjusted P/E)
+      hy_spread  — High-yield OAS spread in basis points
+      vix        — CBOE VIX (estimated from realized vol pre-1990)
+      t10y2y     — 2s10s spread in basis points
+      dff        — Effective Federal Funds Rate
+      pce        — Core PCE year-over-year (%)
+      deficit_gdp — Federal deficit as % of GDP
+      ism        — ISM Manufacturing PMI
+      pct200     — % of S&P 500 stocks above 200-day MA
+      margin_pct — Margin debt YoY proxy (%)
+      top10      — Top-10 stock concentration (% of trailing 6-month return)
+      spx        — S&P 500 monthly close price
+
+    Returns:
+        List of (date_str, indicator_dict) tuples, one per month.
     """
     records = []
 
-    # Rather than listing 240 individual months, we define key periods
-    # and interpolate between them. Each period has representative values
-    # for the indicators available.
-    #
-    # Key periods and their documented conditions:
+    # Define keyframes at significant economic turning points.
+    # Values are sourced from FRED, Shiller, CBO, CBOE, ISM, and
+    # Leuthold/NDR/BofA research (see module docstring for full citations).
 
     keyframes = [
         # (year, month, indicators)
@@ -281,28 +300,31 @@ def _build_monthly_data():
         (2026, 3, dict(cape=33, hy_spread=320, vix=14, t10y2y=110, dff=2.83, pce=2.8, deficit_gdp=6.5, ism=48, pct200=52, margin_pct=18, top10=68, spx=5700)),
     ]
 
-    # Interpolate between keyframes to get monthly data
+    # --- Interpolation engine ---
+    # Convert (year, month) to a single integer for arithmetic
     def to_month_num(y, m):
         return y * 12 + m
 
+    # Linear interpolation between two values
     def lerp(v0, v1, t):
         return v0 + (v1 - v0) * t
 
-    # Build all months from 1980-01 to 2026-03
+    # Date range: Jan 1980 through Mar 2026 = 555 months
     start = to_month_num(1980, 1)
     end = to_month_num(2026, 3)
 
-    # Index keyframes
+    # Pre-index keyframes as (month_number, indicator_dict) pairs
     kf_months = [(to_month_num(y, m), d) for y, m, d in keyframes]
 
     for month_num in range(start, end + 1):
+        # Convert month_num back to (year, month)
         y = month_num // 12
         m = month_num % 12
         if m == 0:
             m = 12
             y -= 1
 
-        # Find surrounding keyframes
+        # Find the two keyframes that bracket this month
         prev_kf = None
         next_kf = None
         for i, (kf_m, kf_d) in enumerate(kf_months):
@@ -311,11 +333,14 @@ def _build_monthly_data():
             if kf_m >= month_num and next_kf is None:
                 next_kf = (kf_m, kf_d)
 
+        # Edge cases: before first or after last keyframe
         if prev_kf is None:
             prev_kf = kf_months[0]
         if next_kf is None:
             next_kf = kf_months[-1]
 
+        # If we're exactly on a keyframe, use its values directly;
+        # otherwise interpolate all indicators between the two brackets
         if prev_kf[0] == next_kf[0]:
             data = prev_kf[1]
         else:
@@ -331,9 +356,19 @@ def _build_monthly_data():
 
 
 def compute_historical_scores():
-    """Compute monthly regime scores from historical data.
+    """Compute monthly regime scores from the interpolated historical data.
 
-    Returns list of (date_str, score, fiscal_dominance_active) tuples.
+    For each of the 555 months (Jan 1980 – Mar 2026):
+      1. Extract indicator values from the interpolated data
+      2. Derive proxy values for indicators not directly available
+         (HY percentile, term premium, debt service ratio, Fed cutting)
+      3. Evaluate all 7 signals and the Fiscal Dominance flag
+      4. Compute the composite regime score
+
+    Returns:
+        List of dicts, one per month, with keys:
+          date, score, raw_score, level, fd_active, fd_conditions,
+          s1_breadth .. s7_term_premium, spx
     """
     monthly_data = _build_monthly_data()
     results = []
@@ -341,45 +376,55 @@ def compute_historical_scores():
     for date_str, d in monthly_data:
         year = int(date_str[:4])
         mon = int(date_str[5:7])
+
+        # --- Extract indicator values (with sensible defaults) ---
         cape = d.get("cape", 25)
         hy_spread = d.get("hy_spread", 400)
         vix = d.get("vix", 18)
-        t10y2y = d.get("t10y2y", 0)  # in basis points (already *100)
-        dff = d.get("dff", 2.0)
-        pce = d.get("pce", 2.0)
+        t10y2y = d.get("t10y2y", 0)       # 2s10s spread in basis points
+        dff = d.get("dff", 2.0)            # Fed Funds Rate
+        pce = d.get("pce", 2.0)            # Core PCE YoY
         deficit_gdp = d.get("deficit_gdp", 3.0)
         ism = d.get("ism", 50)
-        pct200 = d.get("pct200", 60)
+        pct200 = d.get("pct200", 60)       # % stocks above 200-day MA
         margin_pct = d.get("margin_pct", 10)
-        top10 = d.get("top10", 40)
+        top10 = d.get("top10", 40)         # Top-10 concentration
 
-        # Determine if Fed is cutting (approximate: check if rate is declining)
-        fed_cutting = dff < 3.0 and pce > 2.0  # simplified heuristic
+        # --- Derived proxies ---
 
-        # Compute HY spread percentile (rough historical: median ~450, tight ~300, wide ~800)
+        # Fed cutting heuristic: low rate + above-target inflation suggests
+        # the Fed is easing despite inflation pressure (fiscal dominance signal)
+        fed_cutting = dff < 3.0 and pce > 2.0
+
+        # HY spread percentile: rough mapping (median ~450, tight ~300, wide ~800)
+        # This converts absolute spread to a percentile rank estimate
         hy_pctile = max(0, min(100, 100 - (hy_spread - 200) / 15))
 
-        # Approximate term premium: proxy from spread shape vs fundamentals
-        # In reality this comes from the ACM model; we approximate
+        # Term premium proxy: in reality from the NY Fed ACM model.
+        # We approximate from the curve shape: positive spread suggests
+        # some term premium; negative spread suggests none.
         term_premium_proxy = max(-0.5, (t10y2y / 100) - 0.5) if t10y2y > 0 else -0.2
-        term_premium_5y_avg = 0.2  # Long-run average was near zero, recently rising
+        term_premium_5y_avg = 0.2  # Long-run average was near zero
 
-        # Debt service / revenue approximation (rising with rates and debt)
+        # Debt service / revenue: stepped approximation based on the
+        # interest-rate environment across eras
         if year <= 2015:
-            debt_svc = 12
+            debt_svc = 12   # Low rates, moderate debt
         elif year <= 2019:
-            debt_svc = 13
+            debt_svc = 13   # Gradual rate normalization
         elif year <= 2021:
-            debt_svc = 11
+            debt_svc = 11   # ZIRP era (near-zero rates)
         elif year <= 2023:
-            debt_svc = 16
+            debt_svc = 16   # Rapid rate hikes on large debt stock
         else:
-            debt_svc = 20 + (year - 2024) * 1.5
+            debt_svc = 20 + (year - 2024) * 1.5  # Accelerating
 
-        # Evaluate signals
-        s1 = evaluate_breadth(pct_above_200dma=pct200, top_10_concentration_pct=top10)
+        # --- Evaluate all 7 signals ---
+        s1 = evaluate_breadth(pct_above_200dma=pct200,
+                              top_10_concentration_pct=top10)
         s2 = evaluate_valuation(cape_ratio=cape)
-        s3 = evaluate_credit(hy_spread_bps=hy_spread, hy_spread_percentile=hy_pctile)
+        s3 = evaluate_credit(hy_spread_bps=hy_spread,
+                             hy_spread_percentile=hy_pctile)
         s4 = evaluate_sentiment(vix=vix)
         s5 = evaluate_macro(ism_manufacturing=ism)
         s6 = evaluate_leverage(margin_debt_yoy_pct=margin_pct)
@@ -392,21 +437,26 @@ def compute_historical_scores():
             fed_cutting=fed_cutting,
         )
 
-        # Evaluate fiscal dominance flag
+        # --- Evaluate fiscal dominance flag ---
         term_premium_rising = term_premium_proxy > term_premium_5y_avg
+
+        # NBER recession dates used to exclude the deficit condition
+        # (large deficits during recessions are expected counter-cyclical policy)
+        in_recession = (
+            (year == 1980 and 1 <= mon <= 7) or       # Jan-Jul 1980
+            (year == 1981 and mon >= 7) or             # Jul 1981 – Nov 1982
+            (year == 1982 and mon <= 11) or
+            (year == 1990 and mon >= 7) or             # Jul 1990 – Mar 1991
+            (year == 1991 and mon <= 3) or
+            (year == 2001 and 3 <= mon <= 11) or       # Mar-Nov 2001
+            (year == 2008 and mon >= 1) or             # Dec 2007 – Jun 2009
+            (year == 2009 and mon <= 6) or
+            (year == 2020 and 2 <= mon <= 5)           # Feb-Apr 2020
+        )
+
         fd_flag = evaluate_fiscal_dominance(
             deficit_pct_gdp=deficit_gdp,
-            in_recession=(
-                (year == 1980 and 1 <= mon <= 7) or  # Jan-Jul 1980
-                (year == 1981 and mon >= 7) or  # Jul 1981 - Nov 1982
-                (year == 1982 and mon <= 11) or
-                (year == 1990 and mon >= 7) or  # Jul 1990 - Mar 1991
-                (year == 1991 and mon <= 3) or
-                (year == 2001 and 3 <= mon <= 11) or  # Mar-Nov 2001
-                (year == 2008 and mon >= 1) or  # Dec 2007 - Jun 2009
-                (year == 2009 and mon <= 6) or
-                (year == 2020 and 2 <= mon <= 5)  # Feb-Apr 2020
-            ),
+            in_recession=in_recession,
             interest_pct_revenue=debt_svc,
             fed_funds_rate_declining=fed_cutting,
             core_pce_yoy=pce,
@@ -414,6 +464,7 @@ def compute_historical_scores():
             term_premium_rising=term_premium_rising,
         )
 
+        # --- Compute composite score ---
         assessment = compute_regime_score([s1, s2, s3, s4, s5, s6, s7], fd_flag)
 
         results.append({

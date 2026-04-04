@@ -6,6 +6,11 @@ Deploy: Push to GitHub, connect to Streamlit Cloud (free for public repos).
 
 import streamlit as st
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+import numpy as np
 
 from regime_dashboard.dashboard import run_dashboard_manual
 from regime_dashboard.historical_scores import compute_historical_scores
@@ -237,17 +242,131 @@ df = df.set_index("date")
 chart_tab1, chart_tab2 = st.tabs(["Composite Score", "Signal Breakdown"])
 
 with chart_tab1:
-    chart_df = df[["score", "raw_score"]].rename(
-        columns={"score": "Adjusted Score", "raw_score": "Raw Score"}
+    events_main = [
+        ("1981-06", "Volcker\nPeak", "#e67e22"),
+        ("1987-10", "Black\nMonday", "#e74c3c"),
+        ("1990-07", "Gulf War\nRecession", "#e74c3c"),
+        ("1998-08", "LTCM\nCrisis", "#e67e22"),
+        ("2000-03", "Dot-com\nPeak", "#e74c3c"),
+        ("2001-09", "9/11", "#e74c3c"),
+        ("2007-10", "GFC\nBegins", "#e74c3c"),
+        ("2008-09", "Lehman", "#e74c3c"),
+        ("2009-03", "Market\nBottom", "#27ae60"),
+        ("2018-12", "Fed\nPivot", "#e67e22"),
+        ("2020-03", "COVID\nCrash", "#e74c3c"),
+        ("2021-11", "Peak\nBubble", "#e74c3c"),
+        ("2022-01", "Rate Hikes\nBegin", "#e67e22"),
+        ("2025-01", "Fiscal\nDominance", "#9b59b6"),
+    ]
+
+    fig, ax = plt.subplots(figsize=(16, 6), facecolor="#0a0e17")
+    ax.set_facecolor("#0a0e17")
+
+    x = np.arange(len(df))
+    scores_arr = df["score"].values
+    raw_arr = df["raw_score"].values
+    spx_arr = df["spx"].values
+    fd_arr = df["fd_active"].values
+    date_strs = [d.strftime("%Y-%m") for d in df.index]
+
+    # Zone bands
+    ax.axhspan(80, 100, color="#ef4444", alpha=0.08, zorder=0)
+    ax.axhspan(60, 80, color="#fbbf24", alpha=0.05, zorder=0)
+
+    # Fiscal dominance shading
+    fd_start = None
+    for i, active in enumerate(fd_arr):
+        if active and fd_start is None:
+            fd_start = i
+        if (not active or i == len(fd_arr) - 1) and fd_start is not None:
+            ax.axvspan(fd_start, i, color="#7c3aed", alpha=0.12, zorder=1)
+            fd_start = None
+
+    # S&P 500 overlay (secondary y-axis, log scale)
+    ax_spx = ax.twinx()
+    ax_spx.set_facecolor("none")
+    ax_spx.plot(x, spx_arr, color="#ffffff", linewidth=1.0, alpha=0.35, zorder=2)
+    ax_spx.set_yscale("log")
+    ax_spx.set_ylim(100, 8000)
+    ax_spx.set_ylabel("S&P 500 (log scale)", fontsize=10, color="#6b7280")
+    ax_spx.tick_params(axis="y", colors="#4b5563", labelsize=8)
+    for spine in ax_spx.spines.values():
+        spine.set_color("#1f2937")
+
+    # Regime score lines
+    ax.plot(x, raw_arr, color="#f59e0b", alpha=0.25, linewidth=1,
+            linestyle="--", label="Raw Score", zorder=3)
+    ax.plot(x, scores_arr, color="#f59e0b", linewidth=2.2,
+            label="Adjusted Score", zorder=4)
+    ax.fill_between(x, 0, scores_arr, color="#f59e0b", alpha=0.08, zorder=2)
+
+    # Event annotations
+    for evt_idx, (evt_date, evt_label, evt_color) in enumerate(events_main):
+        if evt_date in date_strs:
+            idx = date_strs.index(evt_date)
+            ax.axvline(idx, color=evt_color, linewidth=0.8, linestyle=":",
+                       alpha=0.6, zorder=2)
+            y_pos = 95 if evt_idx % 2 == 0 else 88
+            ax.annotate(evt_label, xy=(idx, y_pos), fontsize=7,
+                        color=evt_color, ha="center", va="top",
+                        fontweight="bold", zorder=5)
+
+    # Zone labels
+    ax.text(len(x) - 2, 90, "EXTREME", fontsize=8, color="#ef4444",
+            alpha=0.5, ha="right", va="center")
+    ax.text(len(x) - 2, 70, "HIGH", fontsize=8, color="#fbbf24",
+            alpha=0.5, ha="right", va="center")
+
+    ax.set_ylim(0, 100)
+    ax.set_xlim(0, len(x) - 1)
+    ax.set_ylabel("Regime Score (0-100)", fontsize=11, color="#9ca3af")
+
+    # X-axis ticks
+    tick_pos = [i for i, d in enumerate(date_strs)
+                if d.endswith("-01") and int(d[:4]) % 4 == 0]
+    tick_lbl = [date_strs[i][:4] for i in tick_pos]
+    ax.set_xticks(tick_pos)
+    ax.set_xticklabels(tick_lbl, fontsize=9, color="#6b7280")
+    ax.tick_params(axis="y", colors="#6b7280", labelsize=9)
+    ax.grid(axis="y", color="#1f2937", linewidth=0.5)
+    ax.grid(axis="x", color="#1f2937", linewidth=0.3)
+
+    # Legend
+    handles = [
+        plt.Line2D([0], [0], color="#f59e0b", linewidth=2, label="Adjusted Score"),
+        plt.Line2D([0], [0], color="#f59e0b", linewidth=1, linestyle="--",
+                    alpha=0.4, label="Raw Score"),
+        plt.Line2D([0], [0], color="#ffffff", linewidth=1, alpha=0.35,
+                    label="S&P 500 (log, right axis)"),
+        mpatches.Patch(facecolor="#7c3aed", alpha=0.25,
+                       label="Fiscal Dominance Active"),
+        mpatches.Patch(facecolor="#ef4444", alpha=0.15,
+                       label="Extreme Zone (80+)"),
+        mpatches.Patch(facecolor="#fbbf24", alpha=0.1,
+                       label="High Zone (60-80)"),
+    ]
+    ax.legend(handles=handles, loc="upper left", fontsize=8,
+              facecolor="#111827", edgecolor="#1f2937", labelcolor="#9ca3af")
+
+    ax.set_title(
+        "Market Topping Regime Score — 7-Signal Composite with Fiscal Dominance Modifier\n"
+        "Monthly · Jan 1980 – Mar 2026",
+        fontsize=13, color="#f9fafb", pad=15, fontweight="bold",
     )
-    st.line_chart(chart_df, color=["#f59e0b", "#78716c"], height=400)
+
+    for spine in ax.spines.values():
+        spine.set_color("#1f2937")
+
+    fig.tight_layout()
+    st.pyplot(fig)
+    plt.close(fig)
 
     # FD periods annotation
     fd_periods = df[df["fd_active"]].index
     if len(fd_periods) > 0:
         st.caption(
             f"Fiscal Dominance active: {fd_periods[0].strftime('%b %Y')} – "
-            f"{fd_periods[-1].strftime('%b %Y')} (purple shading in static chart)"
+            f"{fd_periods[-1].strftime('%b %Y')}"
         )
 
 with chart_tab2:
@@ -260,6 +379,15 @@ with chart_tab2:
         "s6_leverage": "Leverage",
         "s7_term_premium": "Term Premium",
     }
+    signal_colors_chart = {
+        "Breadth & Concentration": "#3b82f6",
+        "Valuation": "#ef4444",
+        "Credit": "#f59e0b",
+        "Sentiment": "#10b981",
+        "Macro": "#8b5cf6",
+        "Leverage": "#ec4899",
+        "Term Premium": "#06b6d4",
+    }
     signal_df = df[list(signal_rename.keys())].rename(columns=signal_rename)
     selected = st.multiselect(
         "Select signals to display",
@@ -267,7 +395,30 @@ with chart_tab2:
         default=["Breadth & Concentration", "Term Premium", "Credit"],
     )
     if selected:
-        st.line_chart(signal_df[selected], height=400)
+        fig2, ax2 = plt.subplots(figsize=(14, 5), facecolor="#0a0e17")
+        ax2.set_facecolor("#0a0e17")
+        x2 = np.arange(len(signal_df))
+        for col in selected:
+            ax2.plot(x2, signal_df[col].values, color=signal_colors_chart.get(col, "#9ca3af"),
+                     linewidth=1.5, label=col)
+        ax2.set_ylim(0, 100)
+        ax2.set_xlim(0, len(x2) - 1)
+        ax2.set_ylabel("Signal Score (0-100)", fontsize=9, color="#9ca3af")
+        date_strs2 = [d.strftime("%Y-%m") for d in signal_df.index]
+        tp2 = [i for i, d in enumerate(date_strs2) if d.endswith("-01") and int(d[:4]) % 4 == 0]
+        tl2 = [date_strs2[i][:4] for i in tp2]
+        ax2.set_xticks(tp2)
+        ax2.set_xticklabels(tl2, fontsize=8, color="#6b7280")
+        ax2.tick_params(axis="y", colors="#6b7280", labelsize=8)
+        ax2.grid(axis="y", color="#1f2937", linewidth=0.5)
+        ax2.grid(axis="x", color="#1f2937", linewidth=0.3)
+        ax2.legend(loc="upper left", fontsize=7, facecolor="#111827",
+                   edgecolor="#1f2937", labelcolor="#9ca3af")
+        for spine in ax2.spines.values():
+            spine.set_color("#1f2937")
+        fig2.tight_layout()
+        st.pyplot(fig2)
+        plt.close(fig2)
 
 # ---------------------------------------------------------------------------
 # Footer

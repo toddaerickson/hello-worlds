@@ -1,10 +1,15 @@
-"""Scoring engine that aggregates all signals into a regime assessment.
+"""Scoring engine — aggregates all signals into a single regime assessment.
 
-When the Fiscal Dominance Flag is active:
-1. +10 point modifier to the overall caution level
-2. Signal 5 (Macro) reweighted to use private-sector LEI
-3. Signal 7 (Term Premium) added to the scored set
-4. All signal interpretations adjusted for fiscal distortion
+This module takes a list of SignalReading objects (one per signal) plus a
+FiscalDominanceFlag, and produces a weighted composite score (0-100).
+
+Scoring logic:
+  1. Select weight set (normal vs. fiscal dominance).
+  2. Apply FD interpretation overrides to each signal.
+  3. Under FD, re-score Signal 5 (Macro) using private-sector LEI.
+  4. Compute weighted average of all active signals.
+  5. Add the FD modifier (+10 when active).
+  6. Generate warnings based on composite and individual signal levels.
 """
 
 from dataclasses import dataclass, field
@@ -16,14 +21,27 @@ from .signals import (
 )
 
 
+# =========================================================================
+# Output data class
+# =========================================================================
+
 @dataclass
 class RegimeAssessment:
-    """Complete regime dashboard output."""
-    signals: list  # List of SignalReading
+    """Complete regime dashboard output.
+
+    Attributes:
+        signals: All 7 SignalReading objects (scored and annotated).
+        fiscal_dominance: The evaluated FiscalDominanceFlag.
+        raw_composite_score: Weighted average before the FD modifier.
+        adjusted_composite_score: Final score after FD modifier (capped at 100).
+        regime_level: Named level derived from adjusted score.
+        warnings: List of human-readable warning strings.
+    """
+    signals: list
     fiscal_dominance: FiscalDominanceFlag
     raw_composite_score: float
     adjusted_composite_score: float
-    regime_level: str  # 'low', 'moderate', 'elevated', 'high', 'extreme'
+    regime_level: str
     warnings: list = field(default_factory=list)
 
     @property
@@ -31,7 +49,7 @@ class RegimeAssessment:
         return len(self.signals)
 
     def to_dict(self):
-        """Serialize to dict for JSON output / dashboard rendering."""
+        """Serialize to a plain dict for JSON output or dashboard rendering."""
         return {
             "regime_level": self.regime_level,
             "raw_composite_score": round(self.raw_composite_score, 1),
@@ -55,7 +73,11 @@ class RegimeAssessment:
         }
 
 
-# Default weights for signals 1-6 (normal regime)
+# =========================================================================
+# Weight sets
+# =========================================================================
+
+# Normal regime: Signals 1-6 scored equally, Signal 7 is monitored but not scored.
 NORMAL_WEIGHTS = {
     "Breadth Divergence": 1.0,
     "Valuation": 1.0,
@@ -65,18 +87,23 @@ NORMAL_WEIGHTS = {
     "Margin Debt / Leverage": 1.0,
 }
 
-# Weights when fiscal dominance is active (Signal 7 added, Signal 5 de-emphasized
-# because government spending masks private-sector weakness)
+# Fiscal dominance regime: Signal 7 added at 1.5x, Valuation and Credit
+# up-weighted (more fragile), Macro de-emphasized (government spending
+# inflates headline LEI).
 FISCAL_DOMINANCE_WEIGHTS = {
     "Breadth Divergence": 1.0,
-    "Valuation": 1.2,  # More fragile under fiscal dominance
-    "Credit Complacency": 1.3,  # Spreads may be artificially suppressed
+    "Valuation": 1.2,               # More fragile under FD
+    "Credit Complacency": 1.3,      # Spreads may be artificially suppressed
     "Sentiment Extremes": 1.0,
-    "Macro Deterioration": 0.7,  # LEI distorted by government spending
+    "Macro Deterioration": 0.7,     # LEI distorted by government spending
     "Margin Debt / Leverage": 1.0,
     "Term Premium / Fiscal Stress": 1.5,  # Primary fiscal dominance indicator
 }
 
+
+# =========================================================================
+# Main scoring function
+# =========================================================================
 
 def compute_regime_score(
     signals: list[SignalReading],
@@ -85,15 +112,15 @@ def compute_regime_score(
     """Compute the overall regime assessment from individual signals.
 
     Args:
-        signals: List of SignalReading objects (signals 1-7)
-        fiscal_dominance: The fiscal dominance flag evaluation
+        signals: List of SignalReading objects (typically signals 1-7).
+        fiscal_dominance: The evaluated fiscal dominance flag.
 
     Returns:
-        RegimeAssessment with composite score and interpretation
+        RegimeAssessment with composite score, level, and warnings.
     """
     warnings = []
 
-    # Select weight set
+    # --- Step 1: Select weight set based on FD flag ---
     if fiscal_dominance.active:
         weights = FISCAL_DOMINANCE_WEIGHTS
         warnings.append(
@@ -103,20 +130,23 @@ def compute_regime_score(
     else:
         weights = NORMAL_WEIGHTS
 
-    # Apply fiscal dominance interpretation overrides
+    # --- Step 2: Apply FD interpretation overrides ---
+    # Each signal gets an additional note explaining how fiscal dominance
+    # changes its interpretation
     overrides = fiscal_dominance.signal_interpretation_overrides
     for signal in signals:
         if signal.name in overrides:
             signal.fiscal_dominance_note = overrides[signal.name]
 
-    # Under fiscal dominance, if Signal 5 has private-sector LEI data,
-    # substitute it for the headline LEI score
+    # --- Step 3: Re-score Signal 5 under FD using private-sector LEI ---
+    # Headline LEI includes government spending components that mask
+    # private-sector weakness during fiscal dominance periods
     if fiscal_dominance.active:
         for signal in signals:
             if signal.name == "Macro Deterioration":
                 private_lei = signal.components.get("private_lei_yoy_change")
                 if private_lei is not None:
-                    # Re-score using private LEI only
+                    # Re-score using private LEI thresholds
                     if private_lei < -5:
                         signal.score = 80
                     elif private_lei < -2:
@@ -135,34 +165,29 @@ def compute_regime_score(
                         "government spending distortion."
                     )
 
-    # Compute weighted composite
+    # --- Step 4: Compute weighted composite ---
     total_weight = 0
     weighted_sum = 0
-    scored_signals = []
 
     for signal in signals:
         weight = weights.get(signal.name)
         if weight is None:
-            # Signal not in weight set (e.g., Signal 7 in normal regime) - skip
+            # Signal not in weight set — e.g., Signal 7 in normal regime.
+            # Still displayed but not scored.
             if not fiscal_dominance.active and signal.name == "Term Premium / Fiscal Stress":
-                # Still display but don't score in normal regime
                 signal.fiscal_dominance_note = (
                     "Not scored in normal regime. Monitored for fiscal dominance detection."
                 )
             continue
-        scored_signals.append(signal)
         weighted_sum += signal.score * weight
         total_weight += weight
 
-    if total_weight > 0:
-        raw_composite = weighted_sum / total_weight
-    else:
-        raw_composite = 0
+    raw_composite = weighted_sum / total_weight if total_weight > 0 else 0
 
-    # Apply fiscal dominance modifier
+    # --- Step 5: Apply FD modifier (+10, capped at 100) ---
     adjusted_composite = min(raw_composite + fiscal_dominance.caution_modifier, 100)
 
-    # Generate additional warnings based on composite
+    # --- Step 6: Generate warnings ---
     if adjusted_composite >= 80:
         warnings.append(
             "EXTREME CAUTION: Multiple topping signals firing simultaneously. "
@@ -174,7 +199,7 @@ def compute_regime_score(
             "Consider reducing risk exposure."
         )
 
-    # Check for individual extreme signals
+    # Flag when 2+ individual signals are at extreme levels
     extreme_signals = [s for s in signals if s.score >= 80]
     if len(extreme_signals) >= 2:
         names = ", ".join(s.name for s in extreme_signals)
