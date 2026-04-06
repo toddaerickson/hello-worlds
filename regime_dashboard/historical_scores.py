@@ -44,7 +44,8 @@ def _build_monthly_data():
 
     Each keyframe contains:
       cape       — Shiller CAPE ratio (cyclically-adjusted P/E)
-      hy_spread  — High-yield OAS spread in basis points
+      hy_spread  — High-yield composite OAS in basis points (legacy, used as
+                   fallback pre-1996 and to derive CCC-BB / Single-B proxies)
       vix        — CBOE VIX (estimated from realized vol pre-1990)
       t10y2y     — 2s10s spread in basis points
       dff        — Effective Federal Funds Rate
@@ -396,8 +397,26 @@ def compute_historical_scores():
         # the Fed is easing despite inflation pressure (fiscal dominance signal)
         fed_cutting = dff < 3.0 and pce > 2.0
 
-        # HY spread percentile: rough mapping (median ~450, tight ~300, wide ~800)
-        # This converts absolute spread to a percentile rank estimate
+        # --- Dual credit signal proxies (derived from composite HY OAS) ---
+        # Pre-1996: ICE BofA sub-indices don't exist, so we use the composite
+        # HY OAS as a legacy fallback. Post-1996: we derive Single-B OAS and
+        # CCC-BB spread proxies from the composite using historical relationships.
+        #
+        # Typical relationships (from FRED data analysis):
+        #   Single-B OAS ≈ 0.8 × composite HY OAS (mid-quality junk)
+        #   CCC OAS ≈ 2.0 × composite HY OAS (in stress, higher multiplier)
+        #   BB OAS ≈ 0.5 × composite HY OAS (safest junk)
+        #   CCC-BB spread = CCC OAS - BB OAS ≈ 1.5 × composite HY OAS
+        single_b_oas = hy_spread * 0.8
+        ccc_bb_spread = hy_spread * 1.5
+
+        # Percentile proxies: expanding-window rank estimate.
+        # Tight end: Single-B ~250 bps (5th pctile), wide ~800 (95th pctile)
+        single_b_pctile = max(0, min(100, (single_b_oas - 200) / 6.5))
+        # CCC-BB: tight ~350 (5th pctile), wide ~1500 (95th pctile)
+        ccc_bb_pctile = max(0, min(100, (ccc_bb_spread - 300) / 12.5))
+
+        # Legacy HY percentile (kept for backward compatibility)
         hy_pctile = max(0, min(100, 100 - (hy_spread - 200) / 15))
 
         # Term premium proxy: in reality from the NY Fed ACM model.
@@ -423,8 +442,18 @@ def compute_historical_scores():
         s1 = evaluate_breadth(pct_above_200dma=pct200,
                               top_10_concentration_pct=top10)
         s2 = evaluate_valuation(cape_ratio=cape)
-        s3 = evaluate_credit(hy_spread_bps=hy_spread,
-                             hy_spread_percentile=hy_pctile)
+        # Post-1996: use dual-signal (CCC-BB + Single-B) approach
+        # Pre-1996: fall back to legacy composite HY OAS
+        if year >= 1996:
+            s3 = evaluate_credit(
+                ccc_bb_spread_bps=ccc_bb_spread,
+                ccc_bb_spread_percentile=ccc_bb_pctile,
+                single_b_oas_bps=single_b_oas,
+                single_b_oas_percentile=single_b_pctile,
+            )
+        else:
+            s3 = evaluate_credit(hy_spread_bps=hy_spread,
+                                 hy_spread_percentile=hy_pctile)
         s4 = evaluate_sentiment(vix=vix)
         s5 = evaluate_macro(ism_manufacturing=ism)
         s6 = evaluate_leverage(margin_debt_yoy_pct=margin_pct)

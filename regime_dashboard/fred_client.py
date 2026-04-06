@@ -115,6 +115,12 @@ def get_series_as_dict(series_id, **kwargs):
 # Reference: common FRED series IDs used by the dashboard
 # =========================================================================
 SERIES = {
+    # Signal 3: Credit (dual-signal approach)
+    "BAMLH0A3HYC": "ICE BofA CCC & Lower US HY OAS (for CCC-BB spread primary)",
+    "BAMLH0A1HYBB": "ICE BofA BB US HY OAS (for CCC-BB spread primary)",
+    "BAMLH0A2HYB": "ICE BofA Single-B US HY OAS (secondary / WIDENING_FAST)",
+    "BAMLH0A0HYM2": "ICE BofA US HY OAS (legacy composite, fallback)",
+    # Signal 7: Term Premium / Fiscal Stress
     "T10Y2Y": "10-Year Treasury Constant Maturity Minus 2-Year (2s10s spread)",
     "DFF": "Effective Federal Funds Rate",
     "PCEPILFE": "Core PCE Price Index (YoY)",

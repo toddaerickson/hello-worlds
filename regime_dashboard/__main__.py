@@ -41,8 +41,10 @@ def main():
             top_10_concentration_pct=68,
             # Signal 2: Valuation — elevated
             pe_ratio=23, cape_ratio=33, ev_ebitda=15,
-            # Signal 3: Credit — complacent (tight spreads)
-            hy_spread_bps=320, ig_spread_bps=90, hy_spread_percentile=15,
+            # Signal 3: Credit — complacent (tight CCC-BB and Single-B spreads)
+            ccc_bb_spread_bps=480, ccc_bb_spread_percentile=15,
+            single_b_oas_bps=260, single_b_oas_percentile=12,
+            single_b_oas_3mo_change_bps=-10, ig_spread_bps=90,
             # Signal 4: Sentiment — moderately bullish
             aaii_bull_bear_spread=18, vix=14, put_call_ratio=0.82,
             fear_greed_index=68,
