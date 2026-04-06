@@ -33,10 +33,15 @@ def run_dashboard_manual(
     pe_ratio=None,
     cape_ratio=None,
     ev_ebitda=None,
-    # Signal 3: Credit
-    hy_spread_bps=None,
+    # Signal 3: Credit (dual-signal approach)
+    ccc_bb_spread_bps=None,
+    ccc_bb_spread_percentile=None,
+    single_b_oas_bps=None,
+    single_b_oas_percentile=None,
+    single_b_oas_3mo_change_bps=None,
     ig_spread_bps=None,
-    hy_spread_percentile=None,
+    hy_spread_bps=None,            # Legacy fallback
+    hy_spread_percentile=None,     # Legacy fallback
     # Signal 4: Sentiment
     aaii_bull_bear_spread=None,
     vix=None,
@@ -74,7 +79,16 @@ def run_dashboard_manual(
     s1 = evaluate_breadth(pct_above_200dma, advance_decline_line_trend,
                           new_highs_vs_new_lows, top_10_concentration_pct)
     s2 = evaluate_valuation(pe_ratio, cape_ratio, ev_ebitda)
-    s3 = evaluate_credit(hy_spread_bps, ig_spread_bps, hy_spread_percentile)
+    s3 = evaluate_credit(
+        ccc_bb_spread_bps=ccc_bb_spread_bps,
+        ccc_bb_spread_percentile=ccc_bb_spread_percentile,
+        single_b_oas_bps=single_b_oas_bps,
+        single_b_oas_percentile=single_b_oas_percentile,
+        single_b_oas_3mo_change_bps=single_b_oas_3mo_change_bps,
+        ig_spread_bps=ig_spread_bps,
+        hy_spread_bps=hy_spread_bps,
+        hy_spread_percentile=hy_spread_percentile,
+    )
     s4 = evaluate_sentiment(aaii_bull_bear_spread, vix, put_call_ratio, fear_greed_index)
     s5 = evaluate_macro(lei_yoy_change, lei_monthly_change,
                         private_lei_yoy_change, ism_manufacturing)

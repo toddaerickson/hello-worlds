@@ -121,13 +121,64 @@ class TestValuation:
 # ---------------------------------------------------------------------------
 
 class TestCredit:
-    def test_tight_spreads_score_high(self):
-        result = evaluate_credit(hy_spread_bps=250, hy_spread_percentile=5, ig_spread_bps=70)
+    def test_tight_ccc_bb_and_single_b_score_high(self):
+        """Tight CCC-BB percentile + tight Single-B + tight IG = extreme."""
+        result = evaluate_credit(
+            ccc_bb_spread_percentile=5, single_b_oas_percentile=5,
+            ig_spread_bps=70,
+        )
         assert result.score >= 80
 
-    def test_wide_spreads_score_low(self):
-        result = evaluate_credit(hy_spread_bps=600, hy_spread_percentile=60, ig_spread_bps=180)
+    def test_wide_ccc_bb_and_single_b_score_low(self):
+        """Wide CCC-BB + wide Single-B + wide IG = no signal."""
+        result = evaluate_credit(
+            ccc_bb_spread_percentile=60, single_b_oas_percentile=60,
+            ig_spread_bps=180,
+        )
         assert result.score == 0
+
+    def test_legacy_fallback_tight(self):
+        """When no CCC-BB or Single-B provided, legacy HY OAS is used."""
+        result = evaluate_credit(hy_spread_bps=250, hy_spread_percentile=5,
+                                 ig_spread_bps=70)
+        assert result.score >= 80
+
+    def test_legacy_fallback_wide(self):
+        """Legacy path: wide spreads = no signal."""
+        result = evaluate_credit(hy_spread_bps=600, hy_spread_percentile=60,
+                                 ig_spread_bps=180)
+        assert result.score == 0
+
+    def test_widening_fast_override(self):
+        """Single-B 3mo change > 150 bps floors score at 70."""
+        # Without the override, these percentiles would score low
+        result = evaluate_credit(
+            ccc_bb_spread_percentile=50,
+            single_b_oas_percentile=50,
+            single_b_oas_3mo_change_bps=200,
+        )
+        assert result.score >= 70
+        assert result.components.get("widening_fast") is True
+
+    def test_widening_fast_does_not_lower_score(self):
+        """WIDENING_FAST only floors — doesn't reduce an already-high score."""
+        result = evaluate_credit(
+            ccc_bb_spread_percentile=5,
+            single_b_oas_percentile=5,
+            ig_spread_bps=70,
+            single_b_oas_3mo_change_bps=200,
+        )
+        assert result.score >= 80  # Already high, override doesn't lower
+
+    def test_ccc_bb_bps_fallback(self):
+        """CCC-BB absolute bps used when percentile not available."""
+        result = evaluate_credit(ccc_bb_spread_bps=350)
+        assert result.score >= 30  # < 400 = tight
+
+    def test_single_b_bps_fallback(self):
+        """Single-B absolute bps used when percentile not available."""
+        result = evaluate_credit(single_b_oas_bps=250)
+        assert result.score >= 25  # < 300 = tight
 
 
 # ---------------------------------------------------------------------------
@@ -329,7 +380,7 @@ class TestScoringEngine:
 
         signals = [
             evaluate_valuation(pe_ratio=22, cape_ratio=30),
-            evaluate_credit(hy_spread_bps=350),
+            evaluate_credit(single_b_oas_bps=350),
         ]
 
         # Without fiscal dominance
@@ -392,9 +443,12 @@ class TestScoringEngine:
             pe_ratio=23,
             cape_ratio=33,
             ev_ebitda=15,
-            hy_spread_bps=320,
+            ccc_bb_spread_bps=480,
+            ccc_bb_spread_percentile=15,
+            single_b_oas_bps=260,
+            single_b_oas_percentile=12,
+            single_b_oas_3mo_change_bps=-10,
             ig_spread_bps=90,
-            hy_spread_percentile=15,
             aaii_bull_bear_spread=18,
             vix=14,
             put_call_ratio=0.82,

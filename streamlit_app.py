@@ -43,9 +43,15 @@ with st.sidebar.expander("Signal 2: Valuation", expanded=False):
     ev_ebitda = st.slider("EV/EBITDA", 8.0, 22.0, 15.0, 0.5)
 
 with st.sidebar.expander("Signal 3: Credit Complacency", expanded=False):
-    hy_spread = st.slider("HY OAS Spread (bps)", 150, 1200, 320, 10)
+    st.caption("Primary: CCC-BB spread (risk appetite)")
+    ccc_bb_bps = st.slider("CCC-BB Spread (bps)", 200, 2000, 480, 10)
+    ccc_bb_pctile = st.slider("CCC-BB Percentile (lower=tighter)", 0, 100, 15)
+    st.caption("Secondary: Single-B OAS (absolute stress)")
+    single_b_bps = st.slider("Single-B OAS (bps)", 150, 1500, 260, 10)
+    single_b_pctile = st.slider("Single-B Percentile (lower=tighter)", 0, 100, 12)
+    single_b_3mo = st.slider("Single-B 3mo Change (bps)", -200, 500, -10, 5)
+    st.caption("Tertiary: IG confirmation")
     ig_spread = st.slider("IG OAS Spread (bps)", 40, 300, 90, 5)
-    hy_pctile = st.slider("HY Spread Percentile (lower=tighter)", 0, 100, 15)
 
 with st.sidebar.expander("Signal 4: Sentiment Extremes", expanded=False):
     aaii = st.slider("AAII Bull-Bear Spread", -40.0, 50.0, 18.0, 1.0)
@@ -86,7 +92,9 @@ assessment = run_dashboard_manual(
     new_highs_vs_new_lows=highs_lows,
     top_10_concentration_pct=top10_conc,
     pe_ratio=pe, cape_ratio=cape, ev_ebitda=ev_ebitda,
-    hy_spread_bps=hy_spread, ig_spread_bps=ig_spread, hy_spread_percentile=hy_pctile,
+    ccc_bb_spread_bps=ccc_bb_bps, ccc_bb_spread_percentile=ccc_bb_pctile,
+    single_b_oas_bps=single_b_bps, single_b_oas_percentile=single_b_pctile,
+    single_b_oas_3mo_change_bps=single_b_3mo, ig_spread_bps=ig_spread,
     aaii_bull_bear_spread=aaii, vix=vix, put_call_ratio=put_call, fear_greed_index=fear_greed,
     lei_yoy_change=lei_yoy, lei_monthly_change=lei_mom,
     private_lei_yoy_change=private_lei, ism_manufacturing=ism,

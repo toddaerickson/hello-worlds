@@ -206,60 +206,153 @@ def evaluate_valuation(pe_ratio=None, cape_ratio=None, ev_ebitda=None):
 
 
 # =========================================================================
-# Signal 3: Credit Complacency
+# Signal 3: Credit Complacency (Dual-Signal Approach)
 # =========================================================================
 
-def evaluate_credit(hy_spread_bps=None, ig_spread_bps=None,
-                    hy_spread_percentile=None):
-    """Score credit market complacency (S3).
+def evaluate_credit(ccc_bb_spread_bps=None, ccc_bb_spread_percentile=None,
+                    single_b_oas_bps=None, single_b_oas_percentile=None,
+                    single_b_oas_3mo_change_bps=None,
+                    ig_spread_bps=None,
+                    # Legacy parameters (deprecated, kept for backward compat)
+                    hy_spread_bps=None, hy_spread_percentile=None):
+    """Score credit market complacency (S3) using a dual-signal approach.
 
-    Tight credit spreads indicate investors are not demanding enough
-    compensation for default risk — a classic late-cycle signal.
+    The composite HY OAS (BAMLH0A0HYM2) is replaced with two targeted signals
+    that better isolate risk appetite from index composition drift:
+
+    Primary: CCC-BB spread (BAMLH0A3HYC minus BAMLH0A1HYBB)
+      - Measures the *risk appetite* within high-yield — how much extra
+        compensation investors demand for the riskiest credits vs. the
+        safest junk bonds.
+      - Scored via percentile ranks on an expanding window rather than
+        fixed bps thresholds, since the absolute level drifts with index
+        composition changes over time.
+
+    Secondary: Single-B OAS (BAMLH0A2HYB)
+      - Retains the "absolute stress level" interpretation — how much
+        investors demand to hold mid-quality junk bonds.
+      - Used as confirmation and for the WIDENING_FAST override.
+
+    WIDENING_FAST override:
+      - If Single-B OAS 3-month change exceeds +150 bps, the score floors
+        at 70 regardless of other sub-components. Rapid spread widening
+        signals credit stress is accelerating — this catches fast-moving
+        crises (Lehman, COVID) before percentile ranks fully adjust.
 
     Args:
-        hy_spread_bps: High-yield OAS spread in basis points (ICE BofA index).
-        ig_spread_bps: Investment-grade OAS spread in basis points.
-        hy_spread_percentile: Current HY spread percentile vs. its own
-            history (0-100). Lower = tighter = more complacent.
+        ccc_bb_spread_bps: CCC minus BB OAS spread in basis points.
+        ccc_bb_spread_percentile: CCC-BB spread percentile rank on expanding
+            window (0-100). Lower = tighter = more complacent.
+        single_b_oas_bps: Single-B OAS spread in basis points (BAMLH0A2HYB).
+        single_b_oas_percentile: Single-B OAS percentile rank (0-100).
+        single_b_oas_3mo_change_bps: 3-month change in Single-B OAS (bps).
+            Positive = widening. Used for WIDENING_FAST override.
+        ig_spread_bps: Investment-grade OAS spread (tertiary confirmation).
+        hy_spread_bps: (Legacy) Composite HY OAS — used as fallback if
+            CCC-BB and Single-B are not provided.
+        hy_spread_percentile: (Legacy) Composite HY percentile — fallback.
     """
     score = 0
     components = {}
+    widening_fast = False
 
-    # HY OAS < 300 bps = extremely tight (historical median ~450)
-    if hy_spread_bps is not None:
-        components["hy_spread_bps"] = hy_spread_bps
-        if hy_spread_bps < 300:
-            score += 40
-        elif hy_spread_bps < 400:
-            score += 25
-        elif hy_spread_bps < 500:
-            score += 10
+    # --- WIDENING_FAST override check (before normal scoring) ---
+    # Rapid Single-B widening catches fast-moving crises. Keyed off
+    # Single-B rather than composite for composition stability.
+    if single_b_oas_3mo_change_bps is not None:
+        components["single_b_oas_3mo_change_bps"] = single_b_oas_3mo_change_bps
+        if single_b_oas_3mo_change_bps > 150:
+            widening_fast = True
+            components["widening_fast"] = True
 
-    # Percentile: below 10th percentile = historically rare tightness
-    if hy_spread_percentile is not None:
-        components["hy_spread_percentile"] = hy_spread_percentile
-        if hy_spread_percentile < 10:
-            score += 35
-        elif hy_spread_percentile < 25:
+    # --- Primary signal: CCC-BB spread (risk appetite measure) ---
+    # Percentile-ranked on expanding window to handle composition drift.
+    # Low percentile = tight spread = complacency = high caution score.
+    if ccc_bb_spread_percentile is not None:
+        components["ccc_bb_spread_percentile"] = ccc_bb_spread_percentile
+        if ccc_bb_spread_percentile < 10:
+            score += 40  # Extreme complacency — bottom decile
+        elif ccc_bb_spread_percentile < 25:
+            score += 25  # Tight — investors chasing yield with abandon
+        elif ccc_bb_spread_percentile < 40:
+            score += 10  # Moderately tight
+    elif ccc_bb_spread_bps is not None:
+        # Fallback to absolute level if percentile not available
+        components["ccc_bb_spread_bps"] = ccc_bb_spread_bps
+        if ccc_bb_spread_bps < 400:
+            score += 35  # Very tight CCC-BB spread
+        elif ccc_bb_spread_bps < 600:
             score += 20
-        elif hy_spread_percentile < 40:
+        elif ccc_bb_spread_bps < 800:
             score += 10
 
-    # IG spreads add confirmation
+    # --- Secondary signal: Single-B OAS (absolute stress level) ---
+    # Provides confirmation and retains the "how stressed is credit?" view.
+    if single_b_oas_percentile is not None:
+        components["single_b_oas_percentile"] = single_b_oas_percentile
+        if single_b_oas_percentile < 10:
+            score += 30  # Extremely tight Single-B spreads
+        elif single_b_oas_percentile < 25:
+            score += 18
+        elif single_b_oas_percentile < 40:
+            score += 8
+    elif single_b_oas_bps is not None:
+        components["single_b_oas_bps"] = single_b_oas_bps
+        if single_b_oas_bps < 300:
+            score += 30  # Extremely tight
+        elif single_b_oas_bps < 400:
+            score += 18
+        elif single_b_oas_bps < 500:
+            score += 8
+
+    # --- Tertiary: IG spreads (confirmation) ---
     if ig_spread_bps is not None:
         components["ig_spread_bps"] = ig_spread_bps
         if ig_spread_bps < 80:
-            score += 25
+            score += 20
         elif ig_spread_bps < 120:
             score += 10
 
+    # --- Legacy fallback: composite HY OAS ---
+    # Used when CCC-BB and Single-B data are not available (e.g., pre-1996
+    # historical data or simplified inputs)
+    if (ccc_bb_spread_percentile is None and ccc_bb_spread_bps is None
+            and single_b_oas_percentile is None and single_b_oas_bps is None):
+        if hy_spread_bps is not None:
+            components["hy_spread_bps"] = hy_spread_bps
+            if hy_spread_bps < 300:
+                score += 40
+            elif hy_spread_bps < 400:
+                score += 25
+            elif hy_spread_bps < 500:
+                score += 10
+
+        if hy_spread_percentile is not None:
+            components["hy_spread_percentile"] = hy_spread_percentile
+            if hy_spread_percentile < 10:
+                score += 35
+            elif hy_spread_percentile < 25:
+                score += 20
+            elif hy_spread_percentile < 40:
+                score += 10
+
     score = min(score, 100)
+
+    # --- Apply WIDENING_FAST floor ---
+    # Rapid spread widening overrides to at least 70, even if the
+    # percentile-based score is low (percentiles lag in fast moves)
+    if widening_fast and score < 70:
+        score = 70
+
     return SignalReading(
         name="Credit Complacency",
         score=score,
         level=score_to_level(score),
         components=components,
-        interpretation="Tight spreads = mispriced credit risk",
+        interpretation=(
+            "CCC-BB spread measures risk appetite within HY; Single-B OAS "
+            "confirms absolute stress. Tight spreads = mispriced credit risk"
+        ),
     )
 
 
