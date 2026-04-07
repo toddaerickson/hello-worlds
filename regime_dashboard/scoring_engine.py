@@ -77,7 +77,10 @@ class RegimeAssessment:
 # Weight sets
 # =========================================================================
 
-# Normal regime: Signals 1-6 scored equally, Signal 7 is monitored but not scored.
+# Normal regime: Signals 1-6 scored equally, Signal 7 at reduced weight.
+# S7 is included at 0.3x because fiscal stress indicators (deficit, debt
+# service) are relevant to market fragility even outside formal fiscal
+# dominance — e.g. pre-GFC deficit concerns, 2019 repo stress.
 NORMAL_WEIGHTS = {
     "Breadth Divergence": 1.0,
     "Valuation": 1.0,
@@ -85,6 +88,7 @@ NORMAL_WEIGHTS = {
     "Sentiment Extremes": 1.0,
     "Macro Deterioration": 1.0,
     "Margin Debt / Leverage": 1.0,
+    "Term Premium / Fiscal Stress": 0.3,
 }
 
 # Fiscal dominance regime: Signal 7 added at 1.5x, Valuation and Credit
@@ -172,12 +176,6 @@ def compute_regime_score(
     for signal in signals:
         weight = weights.get(signal.name)
         if weight is None:
-            # Signal not in weight set — e.g., Signal 7 in normal regime.
-            # Still displayed but not scored.
-            if not fiscal_dominance.active and signal.name == "Term Premium / Fiscal Stress":
-                signal.fiscal_dominance_note = (
-                    "Not scored in normal regime. Monitored for fiscal dominance detection."
-                )
             continue
         weighted_sum += signal.score * weight
         total_weight += weight

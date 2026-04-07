@@ -24,7 +24,7 @@ Categories: Grateful Dead, College Music, Fashion, Knitting, Bio, Colors.
 |---|--------|-----------------|
 | 1 | **Breadth Divergence & Concentration** | % above 200d MA, A/D line, new highs/lows, top-10 stock concentration |
 | 2 | **Valuation** | P/E, CAPE (Shiller), EV/EBITDA |
-| 3 | **Credit Complacency** | HY OAS spread, IG spread, spread percentile vs. history |
+| 3 | **Credit Complacency** | CCC-BB spread (primary risk appetite), Single-B OAS (absolute stress), IG spread; WIDENING_FAST override on Single-B 3mo change |
 | 4 | **Sentiment Extremes** | AAII bull/bear, VIX, put/call ratio, CNN Fear & Greed |
 | 5 | **Macro Deterioration** | Conference Board LEI, private-sector LEI (ex-govt), ISM Manufacturing |
 | 6 | **Margin Debt / Leverage** | Margin debt YoY growth, debt/GDP, percentile rank |
@@ -39,7 +39,7 @@ Structural modifier that activates when **3 of 4** conditions are met:
 3. Fed easing while core PCE > 2.5% (easing despite above-target inflation)
 4. 2s10s > 75 bps with rising term premium (curve steepening for the "wrong reasons")
 
-When active: **+10 caution modifier**, Signal 5 rescored using private-sector LEI (strips government spending distortion), Signal 7 weighted at **1.5x**, all signal interpretations adjusted.
+When active: **+10 caution modifier**, Signal 5 rescored using private-sector LEI (strips government spending distortion), Signal 7 weighted at **1.5x** (vs 0.3x in normal regime), Valuation and Credit up-weighted, Macro de-emphasized, all signal interpretations adjusted.
 
 ### Interfaces
 
@@ -74,7 +74,7 @@ streamlit run streamlit_app.py
 export FRED_API_KEY=your_key_here
 python -m regime_dashboard --live
 
-# Run tests (42 tests)
+# Run tests (48 tests)
 python -m pytest test_regime_dashboard.py -v
 ```
 
@@ -96,18 +96,49 @@ streamlit_app.py       # Streamlit interactive frontend
 regime_chart.html      # Generated interactive chart (open in browser)
 regime_chart.png       # Generated static chart image
 index.html             # GitHub Pages landing page
-test_regime_dashboard.py  # 42 unit tests
+test_regime_dashboard.py  # 48 unit tests (signals, credit dual-signal, scoring engine, FD flag)
 requirements.txt       # Python dependencies
 ```
+
+### Credit Signal Architecture
+
+Signal 3 uses a **dual-signal credit approach** rather than the composite HY OAS index (BAMLH0A0HYM2), which suffers from composition drift:
+
+1. **CCC-BB spread** (BAMLH0A3HYC minus BAMLH0A1HYBB) — primary risk appetite measure, percentile-ranked on an expanding window
+2. **Single-B OAS** (BAMLH0A2HYB) — secondary/confirmation signal retaining absolute stress interpretation
+3. **WIDENING_FAST override** — when Single-B 3mo change > +150 bps, credit score floors at 70 (catches fast-moving crises before percentile ranks adjust)
+4. **Legacy fallback** — pre-1996 data uses composite HY OAS (sub-indices don't exist)
+
+### Signal Weighting
+
+| Regime | S1 | S2 | S3 | S4 | S5 | S6 | S7 |
+|--------|----|----|----|----|----|----|-----|
+| **Normal** | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 0.3 |
+| **Fiscal Dominance** | 1.0 | 1.2 | 1.3 | 1.0 | 0.7 | 1.0 | 1.5 |
 
 ### Historical Data Methodology
 
 The historical backtest uses **keyframe interpolation** rather than a live API:
 
 - ~80 keyframes are defined at significant economic turning points (Volcker peak, Black Monday, LTCM, dot-com, GFC, COVID, etc.)
-- Each keyframe contains documented indicator values sourced from FRED, Shiller, CBO, CBOE, ISM, and Leuthold/NDR/BofA research
-- Between keyframes, all indicators are linearly interpolated to produce smooth monthly estimates
+- Each keyframe contains 20 indicators per month: CAPE, trailing P/E, HY OAS, VIX, 2s10s spread, Fed Funds Rate, Core PCE, deficit/GDP, ISM PMI, LEI YoY, % above 200d MA, A/D line trend, new highs/lows ratio, AAII bull-bear spread, put/call ratio, margin debt YoY, margin debt/GDP, top-10 concentration, and S&P 500 price
+- Between keyframes, numeric indicators are linearly interpolated; categorical fields (A/D line trend) use nearest-neighbor
+- Fed cutting detection compares current DFF to 6 months prior (not an absolute threshold)
+- Term premium proxy uses `abs(curve_steepness) * 0.5`, allowing inverted curves to contribute positive estimates matching ACM model behavior
 - NBER recession dates are hardcoded for the Fiscal Dominance deficit-exclusion logic
 - S&P 500 monthly close prices are included for the price overlay chart
 
 This approach allows the dashboard to run without any API keys while still producing historically grounded regime scores.
+
+### Historical Score Validation
+
+Key market tops score appropriately across all eras:
+
+| Date | Score | Context |
+|------|-------|---------|
+| 1987-08 | 19 | Pre-Black Monday |
+| 2000-03 | 46 | Dot-com peak (CAPE 44, extreme concentration, high margin debt) |
+| 2007-01 | 36 | Pre-GFC (extremely tight credit, declining LEI, elevated leverage) |
+| 2018-01 | 34 | Late cycle (low VIX, high valuations, tight credit) |
+| 2021-11 | 47 | Meme bubble (extreme leverage + concentration, FD 2/4) |
+| 2026-01 | 62 | Fiscal dominance fully active (4/4 conditions, S7 at 85) |

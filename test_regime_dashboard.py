@@ -410,14 +410,16 @@ class TestScoringEngine:
         # Signal 7 should be scored with weight 1.5
         assert result.raw_composite_score > 0
 
-    def test_signal7_not_scored_normal_regime(self):
-        """Signal 7 is not scored in normal regime."""
+    def test_signal7_scored_at_reduced_weight_normal_regime(self):
+        """Signal 7 is scored at 0.3x weight in normal regime."""
         from regime_dashboard.signals import FiscalDominanceFlag
 
         s7 = evaluate_term_premium(spread_2s10s_bps=120, deficit_pct_gdp=7, fed_cutting=True)
         fd_inactive = FiscalDominanceFlag(active=False, caution_modifier=0)
         result = compute_regime_score([s7], fd_inactive)
-        assert result.raw_composite_score == 0
+        # S7 should now contribute to composite, but at reduced weight
+        assert result.raw_composite_score > 0
+        assert result.raw_composite_score == s7.score  # Only signal, so avg = score
 
     def test_private_lei_rescoring_under_fd(self):
         """Under fiscal dominance, Signal 5 is rescored using private-sector LEI."""
