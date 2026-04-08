@@ -569,6 +569,7 @@ def compute_historical_scores():
             "s6_leverage": s6.score,
             "s7_term_premium": s7.score,
             "spx": round(d.get("spx", 0), 0),
+            "vix": round(vix, 1),
         })
 
     return results
