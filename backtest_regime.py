@@ -20,7 +20,7 @@ from regime_dashboard.historical_scores import compute_historical_scores
 # Constants
 # =========================================================================
 
-LEVELS = ["low", "moderate", "elevated", "high", "extreme"]
+QUINTILE_LABELS = ["Q1 (Lowest)", "Q2", "Q3", "Q4", "Q5 (Highest)"]
 HORIZONS = [3, 6, 12]
 DD_THRESHOLDS = [10, 15, 20]
 SCORE_THRESHOLDS = [20, 30, 40]
@@ -43,13 +43,7 @@ GRID_COLOR = "#1f2937"
 TEXT_COLOR = "#9ca3af"
 AMBER = "#f59e0b"
 
-LEVEL_COLORS = {
-    "low": "#10b981",
-    "moderate": "#3b82f6",
-    "elevated": "#f59e0b",
-    "high": "#ef4444",
-    "extreme": "#8b5cf6",
-}
+QUINTILE_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6"]
 
 SIGNAL_COLORS = ["#3b82f6", "#ef4444", "#f59e0b", "#10b981",
                  "#8b5cf6", "#ec4899", "#06b6d4"]
@@ -62,7 +56,7 @@ SEPARATOR = "=" * 80
 # =========================================================================
 
 def load_and_compute():
-    """Load historical scores and attach forward return/drawdown metrics."""
+    """Load historical scores and attach forward return/drawdown metrics + quintile."""
     data = compute_historical_scores()
     n = len(data)
 
@@ -88,16 +82,39 @@ def load_and_compute():
                 worst = min(worst, dd)
             rec["max_dd_12m"] = worst
 
+    # Assign quintiles by score rank (Q1 = lowest scores, Q5 = highest)
+    sorted_scores = sorted(r["score"] for r in data)
+    breakpoints = []
+    for q in range(1, 5):
+        idx = int(len(sorted_scores) * q / 5)
+        breakpoints.append(sorted_scores[idx])
+
+    for rec in data:
+        s = rec["score"]
+        if s < breakpoints[0]:
+            rec["quintile"] = 0
+        elif s < breakpoints[1]:
+            rec["quintile"] = 1
+        elif s < breakpoints[2]:
+            rec["quintile"] = 2
+        elif s < breakpoints[3]:
+            rec["quintile"] = 3
+        else:
+            rec["quintile"] = 4
+
+    # Store breakpoints for reporting
+    data[0]["_quintile_breakpoints"] = breakpoints
+
     return data
 
 
-def _group_by_level(data, key):
-    """Group non-None values of `key` by regime level."""
-    groups = {lv: [] for lv in LEVELS}
+def _group_by_quintile(data, key):
+    """Group non-None values of `key` by score quintile."""
+    groups = {q: [] for q in range(5)}
     for rec in data:
         val = rec.get(key)
         if val is not None:
-            groups[rec["level"]].append(val)
+            groups[rec["quintile"]].append(val)
     return groups
 
 
@@ -114,58 +131,59 @@ def _pct_neg(vals):
 
 
 # =========================================================================
-# Analysis 1: Forward returns by regime level
+# Analysis 1: Forward returns by score quintile
 # =========================================================================
 
 def analyze_forward_returns(data):
+    bp = data[0]["_quintile_breakpoints"]
     print(f"\n{SEPARATOR}")
-    print("ANALYSIS 1: Forward S&P 500 Returns by Regime Level")
+    print("ANALYSIS 1: Forward S&P 500 Returns by Score Quintile")
+    print(f"  Breakpoints: Q1 < {bp[0]:.1f} | Q2 < {bp[1]:.1f} | Q3 < {bp[2]:.1f} | Q4 < {bp[3]:.1f} | Q5 >= {bp[3]:.1f}")
     print(SEPARATOR)
 
-    header = f"{'Level':<12}{'N':>5}"
-    for h in HORIZONS:
-        header += f"  {'Mean':>6} {'Median':>6} {'%Neg':>5}"
-    print(f"\n{'':12}{'':>5}  {'--- 3-Month ---':^17}  {'--- 6-Month ---':^17}  {'--- 12-Month ---':^18}")
-    print(f"{'Level':<12}{'N':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}")
-    print("-" * 80)
+    print(f"\n{'':16}{'':>5}  {'--- 3-Month ---':^17}  {'--- 6-Month ---':^17}  {'--- 12-Month ---':^18}")
+    print(f"{'Quintile':<16}{'N':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}  {'Mean':>6} {'Med':>6} {'%Neg':>5}")
+    print("-" * 84)
 
     results = {}
-    for lv in LEVELS:
+    for q in range(5):
+        label = QUINTILE_LABELS[q]
         fwd = {}
         for h in HORIZONS:
-            vals = [r[f"fwd_{h}m"] for r in data if r["level"] == lv and r[f"fwd_{h}m"] is not None]
+            vals = [r[f"fwd_{h}m"] for r in data if r["quintile"] == q and r[f"fwd_{h}m"] is not None]
             fwd[h] = vals
         n = len(fwd[HORIZONS[0]]) if fwd[HORIZONS[0]] else 0
-        row = f"{lv:<12}{n:>5}"
+        row = f"{label:<16}{n:>5}"
         for h in HORIZONS:
             v = fwd[h]
             row += f"  {_mean(v):>5.1f}% {_median(v):>5.1f}% {_pct_neg(v):>4.0f}%"
         print(row)
-        results[lv] = fwd
+        results[q] = fwd
 
     return results
 
 
 # =========================================================================
-# Analysis 2: Max drawdown by regime level
+# Analysis 2: Max drawdown by score quintile
 # =========================================================================
 
 def analyze_drawdowns(data):
     print(f"\n{SEPARATOR}")
-    print("ANALYSIS 2: Maximum 12-Month Forward Drawdown by Regime Level")
+    print("ANALYSIS 2: Maximum 12-Month Forward Drawdown by Score Quintile")
     print(SEPARATOR)
 
-    print(f"\n{'Level':<12}{'N':>5}  {'Mean':>7} {'Median':>7} {'Worst':>7}  {'>=10%':>6} {'>=15%':>6} {'>=20%':>6}")
-    print("-" * 72)
+    print(f"\n{'Quintile':<16}{'N':>5}  {'Mean':>7} {'Median':>7} {'Worst':>7}  {'>=10%':>6} {'>=15%':>6} {'>=20%':>6}")
+    print("-" * 76)
 
-    groups = _group_by_level(data, "max_dd_12m")
+    groups = _group_by_quintile(data, "max_dd_12m")
     results = {}
-    for lv in LEVELS:
-        vals = groups[lv]
+    for q in range(5):
+        label = QUINTILE_LABELS[q]
+        vals = groups[q]
         n = len(vals)
         if n == 0:
-            print(f"{lv:<12}{0:>5}  {'n/a':>7} {'n/a':>7} {'n/a':>7}  {'n/a':>6} {'n/a':>6} {'n/a':>6}")
-            results[lv] = vals
+            print(f"{label:<16}{0:>5}  {'n/a':>7} {'n/a':>7} {'n/a':>7}  {'n/a':>6} {'n/a':>6} {'n/a':>6}")
+            results[q] = vals
             continue
         mean_dd = _mean(vals)
         med_dd = _median(vals)
@@ -173,8 +191,8 @@ def analyze_drawdowns(data):
         pcts = []
         for thr in DD_THRESHOLDS:
             pcts.append(sum(1 for v in vals if v <= -thr) / n * 100)
-        print(f"{lv:<12}{n:>5}  {mean_dd:>6.1f}% {med_dd:>6.1f}% {worst:>6.1f}%  {pcts[0]:>5.1f}% {pcts[1]:>5.1f}% {pcts[2]:>5.1f}%")
-        results[lv] = vals
+        print(f"{label:<16}{n:>5}  {mean_dd:>6.1f}% {med_dd:>6.1f}% {worst:>6.1f}%  {pcts[0]:>5.1f}% {pcts[1]:>5.1f}% {pcts[2]:>5.1f}%")
+        results[q] = vals
 
     return results
 
@@ -225,7 +243,7 @@ def analyze_threshold_timing(data):
 
 
 # =========================================================================
-# Analysis 4: Hit rates
+# Analysis 4: Hit rates by quintile
 # =========================================================================
 
 def analyze_hit_rates(data):
@@ -233,20 +251,21 @@ def analyze_hit_rates(data):
     print("ANALYSIS 4: Hit Rates -- % of Months Experiencing Forward 12m Drawdown")
     print(SEPARATOR)
 
-    print(f"\n{'Level':<12}{'N':>5}  {'>=10% DD':>9} {'>=15% DD':>9} {'>=20% DD':>9}")
-    print("-" * 50)
+    print(f"\n{'Quintile':<16}{'N':>5}  {'>=10% DD':>9} {'>=15% DD':>9} {'>=20% DD':>9}")
+    print("-" * 54)
 
-    groups = _group_by_level(data, "max_dd_12m")
-    for lv in LEVELS:
-        vals = groups[lv]
+    groups = _group_by_quintile(data, "max_dd_12m")
+    for q in range(5):
+        label = QUINTILE_LABELS[q]
+        vals = groups[q]
         n = len(vals)
         if n == 0:
-            print(f"{lv:<12}{0:>5}  {'n/a':>9} {'n/a':>9} {'n/a':>9}")
+            print(f"{label:<16}{0:>5}  {'n/a':>9} {'n/a':>9} {'n/a':>9}")
             continue
         pcts = []
         for thr in DD_THRESHOLDS:
             pcts.append(sum(1 for v in vals if v <= -thr) / n * 100)
-        print(f"{lv:<12}{n:>5}  {pcts[0]:>8.1f}% {pcts[1]:>8.1f}% {pcts[2]:>8.1f}%")
+        print(f"{label:<16}{n:>5}  {pcts[0]:>8.1f}% {pcts[1]:>8.1f}% {pcts[2]:>8.1f}%")
 
 
 # =========================================================================
@@ -318,11 +337,14 @@ def print_summary(data):
     print(f"\nTotal months analyzed:            {len(data)}  ({data[0]['date']} to {data[-1]['date']})")
     print(f"Months with 12m forward data:     {len(valid)}")
 
-    print("\nScore distribution:")
-    for lv in LEVELS:
-        cnt = sum(1 for r in data if r["level"] == lv)
-        pct = cnt / len(data) * 100
-        print(f"  {lv.capitalize():<12} {cnt:>4} months ({pct:>5.1f}%)")
+    bp = data[0]["_quintile_breakpoints"]
+    print("\nScore quintile distribution:")
+    for q in range(5):
+        label = QUINTILE_LABELS[q]
+        cnt = sum(1 for r in data if r["quintile"] == q)
+        scores = sorted(r["score"] for r in data if r["quintile"] == q)
+        lo, hi = scores[0], scores[-1]
+        print(f"  {label:<16} {cnt:>4} months  (score {lo:>5.1f} - {hi:>5.1f})")
 
     all_dd = [r["max_dd_12m"] for r in valid]
     print(f"\nOverall 12-month drawdown statistics:")
@@ -344,19 +366,20 @@ def generate_chart(data, fwd_results, dd_results, roc_data):
                  color="white", fontsize=16, fontweight="bold", y=0.97)
 
     # -----------------------------------------------------------------
-    # Panel 1 (top-left): Forward returns by level
+    # Panel 1 (top-left): Forward returns by quintile
     # -----------------------------------------------------------------
     ax1 = fig.add_axes([0.06, 0.55, 0.42, 0.36])
     ax1.set_facecolor(PANEL_BG)
 
     bar_w = 0.22
     horizon_colors = ["#3b82f6", "#10b981", "#f59e0b"]
-    x_pos = list(range(len(LEVELS)))
+    x_pos = list(range(5))
+    q_labels = ["Q1\nLowest", "Q2", "Q3", "Q4", "Q5\nHighest"]
 
     for hi, h in enumerate(HORIZONS):
         medians = []
-        for lv in LEVELS:
-            vals = fwd_results.get(lv, {}).get(h, [])
+        for q in range(5):
+            vals = fwd_results.get(q, {}).get(h, [])
             medians.append(_median(vals) if vals else 0)
         offsets = [x + (hi - 1) * bar_w for x in x_pos]
         ax1.bar(offsets, medians, bar_w * 0.9, color=horizon_colors[hi],
@@ -364,35 +387,33 @@ def generate_chart(data, fwd_results, dd_results, roc_data):
 
     ax1.axhline(0, color=GRID_COLOR, linewidth=1)
     ax1.set_xticks(x_pos)
-    ax1.set_xticklabels([lv.capitalize() for lv in LEVELS], color=TEXT_COLOR)
+    ax1.set_xticklabels(q_labels, color=TEXT_COLOR, fontsize=9)
     ax1.set_ylabel("Median Forward Return (%)", color=TEXT_COLOR, fontsize=10)
-    ax1.set_title("Forward S&P 500 Returns by Regime Level", color="white", fontsize=12)
+    ax1.set_title("Forward S&P 500 Returns by Score Quintile", color="white", fontsize=12)
     ax1.legend(fontsize=9, loc="upper right")
     ax1.tick_params(colors=TEXT_COLOR)
     ax1.grid(axis="y", color=GRID_COLOR, alpha=0.5)
 
     # -----------------------------------------------------------------
-    # Panel 2 (top-right): Max drawdown by level
+    # Panel 2 (top-right): Max drawdown by quintile
     # -----------------------------------------------------------------
     ax2 = fig.add_axes([0.56, 0.55, 0.42, 0.36])
     ax2.set_facecolor(PANEL_BG)
 
     mean_dds = []
     worst_dds = []
-    colors = []
-    for lv in LEVELS:
-        vals = dd_results.get(lv, [])
+    for q in range(5):
+        vals = dd_results.get(q, [])
         mean_dds.append(_mean(vals) if vals else 0)
         worst_dds.append(min(vals) if vals else 0)
-        colors.append(LEVEL_COLORS[lv])
 
-    ax2.bar(x_pos, mean_dds, 0.5, color=colors, alpha=0.8, label="Mean DD")
+    ax2.bar(x_pos, mean_dds, 0.5, color=QUINTILE_COLORS, alpha=0.8, label="Mean DD")
     ax2.scatter(x_pos, worst_dds, color="white", marker="v", s=80, zorder=5, label="Worst DD")
 
     ax2.set_xticks(x_pos)
-    ax2.set_xticklabels([lv.capitalize() for lv in LEVELS], color=TEXT_COLOR)
+    ax2.set_xticklabels(q_labels, color=TEXT_COLOR, fontsize=9)
     ax2.set_ylabel("Drawdown (%)", color=TEXT_COLOR, fontsize=10)
-    ax2.set_title("12-Month Max Drawdown by Regime Level", color="white", fontsize=12)
+    ax2.set_title("12-Month Max Drawdown by Score Quintile", color="white", fontsize=12)
     ax2.legend(fontsize=9, loc="lower left")
     ax2.tick_params(colors=TEXT_COLOR)
     ax2.grid(axis="y", color=GRID_COLOR, alpha=0.5)
