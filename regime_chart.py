@@ -71,9 +71,9 @@ def generate_png(output_path="regime_chart.png"):
     ax_main.set_facecolor("#0a0e17")
     x = range(len(dates))
 
-    # Zone bands: light shading to highlight extreme (80+) and high (60-80) zones
-    ax_main.axhspan(80, 100, color="#ef4444", alpha=0.08, zorder=0)
-    ax_main.axhspan(60, 80, color="#fbbf24", alpha=0.05, zorder=0)
+    # Zone bands: light shading to highlight extreme (52+) and high (38-52) zones
+    ax_main.axhspan(52, 100, color="#ef4444", alpha=0.08, zorder=0)
+    ax_main.axhspan(38, 52, color="#fbbf24", alpha=0.05, zorder=0)
 
     # Fiscal dominance shading: purple bands where the FD flag is active
     fd_start = None
@@ -148,8 +148,8 @@ def generate_png(output_path="regime_chart.png"):
         plt.Line2D([0], [0], color="#ffffff", linewidth=1, alpha=0.35,
                     label="S&P 500 (log, right axis)"),
         mpatches.Patch(facecolor="#7c3aed", alpha=0.25, label="Fiscal Dominance Active"),
-        mpatches.Patch(facecolor="#ef4444", alpha=0.15, label="Extreme Zone (80+)"),
-        mpatches.Patch(facecolor="#fbbf24", alpha=0.1, label="High Zone (60-80)"),
+        mpatches.Patch(facecolor="#ef4444", alpha=0.15, label="Extreme Zone (52+)"),
+        mpatches.Patch(facecolor="#fbbf24", alpha=0.1, label="High Zone (38-52)"),
     ]
     ax_main.legend(handles=handles, loc="upper left", fontsize=8,
                    facecolor="#111827", edgecolor="#1f2937", labelcolor="#9ca3af")

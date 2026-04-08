@@ -23,7 +23,7 @@ from regime_dashboard.historical_scores import compute_historical_scores
 LEVELS = ["low", "moderate", "elevated", "high", "extreme"]
 HORIZONS = [3, 6, 12]
 DD_THRESHOLDS = [10, 15, 20]
-SCORE_THRESHOLDS = [30, 40, 50]
+SCORE_THRESHOLDS = [20, 30, 40]
 ROC_THRESHOLDS = [10, 20, 30, 40, 50, 60, 70, 80]
 
 SIGNAL_KEYS = [

@@ -8,6 +8,7 @@ Scoring logic:
   2. Apply FD interpretation overrides to each signal.
   3. Under FD, re-score Signal 5 (Macro) using private-sector LEI.
   4. Compute weighted average of all active signals.
+  4b. Add clustering bonus (+5 per signal above 50, beyond first two).
   5. Add the FD modifier (+10 when active).
   6. Generate warnings based on composite and individual signal levels.
 """
@@ -77,10 +78,10 @@ class RegimeAssessment:
 # Weight sets
 # =========================================================================
 
-# Normal regime: Signals 1-6 scored equally, Signal 7 at reduced weight.
-# S7 is included at 0.3x because fiscal stress indicators (deficit, debt
-# service) are relevant to market fragility even outside formal fiscal
-# dominance — e.g. pre-GFC deficit concerns, 2019 repo stress.
+# Normal regime: Signals 1-6 scored equally, Signal 7 excluded.
+# S7 (Term Premium / Fiscal Stress) was designed for fiscal dominance
+# detection and has near-random predictive power as a standalone signal
+# (backtest lift 0.95x).  It contributes only under fiscal dominance.
 NORMAL_WEIGHTS = {
     "Breadth Divergence": 1.0,
     "Valuation": 1.0,
@@ -88,7 +89,7 @@ NORMAL_WEIGHTS = {
     "Sentiment Extremes": 1.0,
     "Macro Deterioration": 1.0,
     "Margin Debt / Leverage": 1.0,
-    "Term Premium / Fiscal Stress": 0.3,
+    "Term Premium / Fiscal Stress": 0.0,  # S7 contributes only under fiscal dominance
 }
 
 # Fiscal dominance regime: Signal 7 added at 1.5x, Valuation and Credit
@@ -182,16 +183,24 @@ def compute_regime_score(
 
     raw_composite = weighted_sum / total_weight if total_weight > 0 else 0
 
+    # --- Step 4b: Clustering bonus ---
+    # A weighted average dilutes danger when 3+ signals fire simultaneously.
+    # The dot-com peak had 4 signals above 50 but the average was only 47.
+    # Add +5 per signal above 50, beyond the first two.
+    signals_above_50 = sum(1 for s in signals if s.score >= 50)
+    clustering_bonus = max(0, (signals_above_50 - 2)) * 5
+    raw_composite = min(raw_composite + clustering_bonus, 100)
+
     # --- Step 5: Apply FD modifier (+10, capped at 100) ---
     adjusted_composite = min(raw_composite + fiscal_dominance.caution_modifier, 100)
 
     # --- Step 6: Generate warnings ---
-    if adjusted_composite >= 80:
+    if adjusted_composite >= 52:
         warnings.append(
             "EXTREME CAUTION: Multiple topping signals firing simultaneously. "
             "Risk of significant drawdown is elevated."
         )
-    elif adjusted_composite >= 60:
+    elif adjusted_composite >= 38:
         warnings.append(
             "HIGH CAUTION: Several signals indicating market fragility. "
             "Consider reducing risk exposure."

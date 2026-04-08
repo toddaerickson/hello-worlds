@@ -22,24 +22,24 @@ from regime_dashboard.scoring_engine import compute_regime_score
 
 class TestScoreToLevel:
     def test_extreme(self):
-        assert score_to_level(80) == "extreme"
+        assert score_to_level(52) == "extreme"
         assert score_to_level(100) == "extreme"
 
     def test_high(self):
-        assert score_to_level(60) == "high"
-        assert score_to_level(79) == "high"
+        assert score_to_level(38) == "high"
+        assert score_to_level(51) == "high"
 
     def test_elevated(self):
-        assert score_to_level(40) == "elevated"
-        assert score_to_level(59) == "elevated"
+        assert score_to_level(26) == "elevated"
+        assert score_to_level(37) == "elevated"
 
     def test_moderate(self):
-        assert score_to_level(20) == "moderate"
-        assert score_to_level(39) == "moderate"
+        assert score_to_level(14) == "moderate"
+        assert score_to_level(25) == "moderate"
 
     def test_low(self):
         assert score_to_level(0) == "low"
-        assert score_to_level(19) == "low"
+        assert score_to_level(13) == "low"
 
 
 # ---------------------------------------------------------------------------
@@ -410,16 +410,15 @@ class TestScoringEngine:
         # Signal 7 should be scored with weight 1.5
         assert result.raw_composite_score > 0
 
-    def test_signal7_scored_at_reduced_weight_normal_regime(self):
-        """Signal 7 is scored at 0.3x weight in normal regime."""
+    def test_signal7_excluded_from_normal_regime(self):
+        """Signal 7 has weight 0 in normal regime (only contributes under FD)."""
         from regime_dashboard.signals import FiscalDominanceFlag
 
         s7 = evaluate_term_premium(spread_2s10s_bps=120, deficit_pct_gdp=7, fed_cutting=True)
         fd_inactive = FiscalDominanceFlag(active=False, caution_modifier=0)
         result = compute_regime_score([s7], fd_inactive)
-        # S7 should now contribute to composite, but at reduced weight
-        assert result.raw_composite_score > 0
-        assert result.raw_composite_score == s7.score  # Only signal, so avg = score
+        # S7 excluded from normal composite — near-random standalone predictor
+        assert result.raw_composite_score == 0
 
     def test_private_lei_rescoring_under_fd(self):
         """Under fiscal dominance, Signal 5 is rescored using private-sector LEI."""

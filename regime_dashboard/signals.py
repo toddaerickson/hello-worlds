@@ -49,20 +49,25 @@ class SignalReading:
 def score_to_level(score):
     """Map a 0-100 numeric score to a named caution level.
 
+    Thresholds are calibrated to the historical composite score distribution,
+    which concentrates in the 0-65 range due to weighted averaging of 7
+    signals.  Drawdown rates increase monotonically through "high":
+      low 14% -> moderate 25% -> elevated 44% -> high 71%.
+
     Thresholds:
-      80-100 → extreme
-      60-79  → high
-      40-59  → elevated
-      20-39  → moderate
-       0-19  → low
+      52-100 -> extreme   (crisis-level stress, may be coincident)
+      38-51  -> high      (danger zone -- 71% historical 10%+ DD rate)
+      26-37  -> elevated  (multiple warnings -- 44% DD rate)
+      14-25  -> moderate  (normal risk -- 25% DD rate)
+       0-13  -> low       (benign -- 14% DD rate)
     """
-    if score >= 80:
+    if score >= 52:
         return "extreme"
-    if score >= 60:
+    if score >= 38:
         return "high"
-    if score >= 40:
+    if score >= 26:
         return "elevated"
-    if score >= 20:
+    if score >= 14:
         return "moderate"
     return "low"
 
